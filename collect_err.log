@@ -1,0 +1,13 @@
+--- Logging error ---
+Traceback (most recent call last):
+  File "C:\Users\내PC\AppData\Local\Python\pythoncore-3.14-64\Lib\logging\__init__.py", line 1154, in emit
+    stream.write(msg + self.terminator)
+    ~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^
+UnicodeEncodeError: 'cp949' codec can't encode character '\u2014' in position 31: illegal multibyte sequence
+Call stack:
+  File "C:\Users\내PC\Desktop\dev\investment-dashboard\backend\collect.py", line 174, in <module>
+    collect_nasdaq()
+  File "C:\Users\내PC\Desktop\dev\investment-dashboard\backend\collect.py", line 104, in collect_nasdaq
+    log.info(f"NASDAQ 완료 \u2014 종목 {len(all_metrics)}개, 차트 {history_ok}개 저장")
+Message: 'NASDAQ 완료 \u2014 종목 100개, 차트 100개 저장'
+Arguments: ()

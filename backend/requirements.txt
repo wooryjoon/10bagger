@@ -1,0 +1,12 @@
+fastapi
+uvicorn[standard]
+yfinance
+pandas
+pykrx
+requests
+beautifulsoup4
+lxml
+python-dotenv
+anthropic
+numpy
+apscheduler

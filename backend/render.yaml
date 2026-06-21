@@ -1,0 +1,14 @@
+services:
+  - type: web
+    name: investment-dashboard-api
+    runtime: python
+    rootDir: .
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn main:app --host 0.0.0.0 --port $PORT
+    envVars:
+      - key: DB_PATH
+        value: /data/stocks.db
+    disk:
+      name: stocks-data
+      mountPath: /data
+      sizeGB: 1
