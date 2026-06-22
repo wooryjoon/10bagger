@@ -31,6 +31,19 @@ export interface ScoreBreakdownItem {
 
 export type ScoreBreakdown = Record<string, ScoreBreakdownItem>
 
+export interface Stage5Item {
+  score: number
+  max: number
+  value: number | null
+}
+
+export interface Stage5Breakdown {
+  insider_activity?: Stage5Item
+  institutional_flow?: Stage5Item
+  news_sentiment?: Stage5Item
+  headlines?: string[]
+}
+
 export interface Stock {
   ticker: string
   market: 'nasdaq' | 'kospi'
@@ -41,6 +54,10 @@ export interface Stock {
   score: number
   score_breakdown: ScoreBreakdown
   reasoning: string
+  ai_comment?: string | null
+  stage5_score?: number | null
+  stage5_breakdown?: Stage5Breakdown | null
+  investment_tier?: 1 | 2 | 3 | null
   updated_at: string
 }
 

@@ -1,399 +1,328 @@
 """
-Hybrid Quant Screening System
-Final Score = Fundamental (50%) + Narrative (30%) + Technical (20%)
+Quant Screening — Undervalued Growth Stocks
+Total Score = Financial(60) + Chart(30) + CashFlow(10) = 100
+
+Target: High-growth companies investing in R&D/CapEx → low/negative OPM,
+        currently at chart oversold bottom (RSI ≤ 30, far below MA, volume dry-up).
 """
-
 from __future__ import annotations
-
 import math
 
 
-# ── Module 1: Fundamental Score (0-100) ──────────────────────────────────────
+# ── Stage 1: Financial Scoring (max 60) ──────────────────────────────────────
 
-def score_fundamental(fd: dict) -> tuple[float, dict, list[str]]:
+def score_financial(fd: dict) -> tuple[float, dict, list[str]]:
     """
-    fd keys:
-      op_income_3y, op_cf_3y, net_income_3y, fcf_yields_3y, current_fcf_yield,
-      accruals_ok,
-      current_ratio    (from metrics),
-      rev_growth       (from metrics),
-      ar_growth        (from balance sheet),
-      inv_growth       (from balance sheet),
-      dividend_yield   (from metrics),
-      buyback_yield    (from cashflow),
-
-    Returns (score 0-100 capped, breakdown, reasons).
-    Max raw sum = 20+40+20+20+10+10 = 120 → capped at 100.
+    Scores growth + valuation. Penalises mature profitable companies (OPM > 20%).
+    fd keys: rev_growth, revenue_cagr, operating_margin, price_to_sales,
+             sector_avg_psr, pe_ratio, earnings_growth
     """
     reasons: list[str] = []
 
-    # ── Safety gate: 2+ yr consecutive Operating Income > 0 AND Op CF > 0 ──
-    oi = fd.get("op_income_3y", [])
-    ocf = fd.get("op_cf_3y", [])
-    safety = (
-        len(oi) >= 2 and all(v > 0 for v in oi[:2]) and
-        len(ocf) >= 2 and all(v > 0 for v in ocf[:2])
-    )
-    safety_score = 20 if safety else 0
+    opm      = fd.get("operating_margin")
+    psr      = fd.get("price_to_sales")
+    sect_psr = fd.get("sector_avg_psr")
+    pe       = fd.get("pe_ratio")
+    eg       = fd.get("earnings_growth")
 
-    if not safety:
-        empty_bd = {
-            "safety":           {"score": 0, "max": 20, "value": None},
-            "fcf_yield":        {"score": 0, "max": 40, "value": None},
-            "liquidity":        {"score": 0, "max": 20, "value": None},
-            "accruals":         {"score": 0, "max": 20, "value": None},
-            "quality_growth":   {"score": 0, "max": 10, "value": None},
-            "shareholder_yield":{"score": 0, "max": 10, "value": None},
-        }
-        return 0.0, empty_bd, ["안전장치 미통과 — 영업이익·영업CF 연속 흑자 조건 불충족"]
+    # Prefer multi-year CAGR; flag if falling back to single-year YoY
+    using_cagr = fd.get("revenue_cagr") is not None
+    growth     = fd.get("revenue_cagr") if using_cagr else fd.get("rev_growth")
 
-    reasons.append("영업이익·영업CF 연속 흑자 확인")
+    g_pct  = (growth or 0) * 100
+    op_pct = (opm    or 0) * 100
+    rule40 = g_pct + op_pct
 
-    # ── FCF Yield (0-40) ──────────────────────────────────────────────────────
-    fcf_yields = fd.get("fcf_yields_3y", [])
-    cur_yield = fd.get("current_fcf_yield")
-
-    if cur_yield is not None and len(fcf_yields) >= 2:
-        past = fcf_yields[1:]
-        avg = sum(past) / len(past)
-        std = _std(past)
-        if std > 0 and cur_yield > avg + 1.5 * std:
-            fcf_score = 40
-            reasons.append(f"FCF 수익률 {cur_yield:.1%} — 3년 평균 대비 +1.5σ 극단 저평가")
-        elif cur_yield > avg and cur_yield > 0.03:
-            fcf_score = 28
-            reasons.append(f"FCF 수익률 {cur_yield:.1%} — 역사적 평균 상회")
-        elif cur_yield > 0.05:
-            fcf_score = 20
-        elif cur_yield > 0.02:
-            fcf_score = 12
-        elif cur_yield > 0:
-            fcf_score = 5
-        else:
-            fcf_score = 0
-    elif cur_yield is not None:
-        if cur_yield > 0.06:
-            fcf_score = 24
-            reasons.append(f"FCF 수익률 {cur_yield:.1%}")
-        elif cur_yield > 0.03:
-            fcf_score = 14
-        elif cur_yield > 0:
-            fcf_score = 6
-        else:
-            fcf_score = 0
+    # ── Revenue Growth (0-25) ─────────────────────────────────────────────────
+    if growth is None:
+        gs = 3
+    elif growth >= 0.50:
+        gs = 25; reasons.append(f"매출 성장률 {g_pct:.0f}% — 폭발적 성장")
+    elif growth >= 0.40:
+        gs = 22; reasons.append(f"매출 성장률 {g_pct:.0f}%")
+    elif growth >= 0.30:
+        gs = 18; reasons.append(f"매출 성장률 {g_pct:.0f}%")
+    elif growth >= 0.20:
+        gs = 12; reasons.append(f"매출 성장률 {g_pct:.0f}%")
+    elif growth >= 0.10:
+        gs = 5
     else:
-        fcf_score = 0
+        gs = 0
 
-    fcf_score = min(40, max(0, fcf_score))
-
-    # ── Liquidity: Current Ratio (0-20) ──────────────────────────────────────
-    # Replaces net_cash_ratio; Current Ratio > 1.2 = healthy short-term liquidity
-    cr = fd.get("current_ratio")
-    if cr is not None:
-        if cr >= 2.5:
-            liq_score = 20
-            reasons.append(f"유동비율 {cr:.1f}x — 강력한 단기 유동성")
-        elif cr >= 1.8:
-            liq_score = 15
-            reasons.append(f"유동비율 {cr:.1f}x — 양호한 유동성")
-        elif cr >= 1.2:
-            liq_score = 10
-        elif cr >= 1.0:
-            liq_score = 4
-        else:
-            liq_score = 0  # current liabilities > current assets = risk
+    # ── Rule of 40 (0-20) ─────────────────────────────────────────────────────
+    if growth is None:
+        r40s = 3
+    elif rule40 >= 60:
+        r40s = 20; reasons.append(f"Rule of 40 = {rule40:.0f}% — 최우수")
+    elif rule40 >= 50:
+        r40s = 16; reasons.append(f"Rule of 40 = {rule40:.0f}%")
+    elif rule40 >= 40:
+        r40s = 10
+    elif rule40 >= 30:
+        r40s = 5
+    elif rule40 >= 20:
+        r40s = 2
     else:
-        liq_score = 7  # neutral / unknown
+        r40s = 0
 
-    liq_score = min(20, max(0, liq_score))
-
-    # ── Accruals (0-20) ───────────────────────────────────────────────────────
-    acc_ok = fd.get("accruals_ok")
-    if acc_ok is True:
-        acc_score = 20
-        reasons.append("발생액 음수 — 현금이익이 회계이익 상회 (earnings quality ↑)")
-    elif acc_ok is False:
-        acc_score = 0
-    else:
-        acc_score = 10
-
-    # ── Quality Growth: AR & Inventory vs Revenue growth (0-10) ──────────────
-    ar_gr = fd.get("ar_growth")    # AR YoY growth (float | None)
-    inv_gr = fd.get("inv_growth")  # Inventory YoY growth (float | None)
-    rev_gr = fd.get("rev_growth")  # Revenue YoY growth (float | None)
-
-    if rev_gr is None:
-        qg_score = 5  # can't assess → neutral
-    elif rev_gr <= 0:
-        # Revenue declining: AR/inv should also decline
-        ar_ok  = ar_gr  is None or ar_gr  < 0
-        inv_ok = inv_gr is None or inv_gr < 0
-        if ar_ok and inv_ok:
-            qg_score = 5
-        else:
-            qg_score = 0
-    else:
-        threshold = rev_gr + 0.10  # 10% tolerance
-        ar_ok  = ar_gr  is None or ar_gr  <= threshold
-        inv_ok = inv_gr is None or inv_gr <= threshold
-        if ar_ok and inv_ok:
-            qg_score = 10
-            if ar_gr is not None or inv_gr is not None:
-                worst = max(v for v in [ar_gr, inv_gr] if v is not None)
-                reasons.append(
-                    f"매출채권·재고 증가율({worst:.0%}) ≤ 매출 증가율({rev_gr:.0%}) — 이익 품질 양호"
-                )
-        elif ar_ok or inv_ok:
-            qg_score = 5
-        else:
-            qg_score = 0
-            reasons.append("매출채권·재고 급증 — 분식 또는 수요 둔화 가능성")
-
-    qg_score = min(10, max(0, qg_score))
-
-    # ── Shareholder Yield: Dividend + Buyback (0-10) ─────────────────────────
-    div_yield   = fd.get("dividend_yield")  or 0.0
-    buyback_yield = fd.get("buyback_yield") or 0.0
-    sh_yield = div_yield + buyback_yield
-
-    if sh_yield >= 0.06:
-        sy_score = 10
-        reasons.append(f"주주환원 수익률 {sh_yield:.1%} — 배당+자사주 매입")
-    elif sh_yield >= 0.04:
-        sy_score = 7
-    elif sh_yield >= 0.02:
-        sy_score = 4
-    elif sh_yield >= 0.005:
-        sy_score = 2
-    else:
-        sy_score = 1  # growth stocks: not penalized
-
-    sy_score = min(10, max(0, sy_score))
-
-    total = min(100.0, safety_score + fcf_score + liq_score + acc_score + qg_score + sy_score)
-
-    breakdown = {
-        "safety": {
-            "score": round(safety_score, 1), "max": 20, "value": None,
-        },
-        "fcf_yield": {
-            "score": round(fcf_score, 1), "max": 40,
-            "value": round(cur_yield * 100, 2) if cur_yield is not None else None,
-        },
-        "liquidity": {
-            "score": round(liq_score, 1), "max": 20,
-            "value": round(cr, 2) if cr is not None else None,
-        },
-        "accruals": {
-            "score": round(acc_score, 1), "max": 20, "value": None,
-        },
-        "quality_growth": {
-            "score": round(qg_score, 1), "max": 10,
-            "value": round(rev_gr * 100, 1) if rev_gr is not None else None,
-        },
-        "shareholder_yield": {
-            "score": round(sy_score, 1), "max": 10,
-            "value": round(sh_yield * 100, 2) if sh_yield > 0 else None,
-        },
-    }
-    return round(total, 1), breakdown, reasons
-
-
-# ── Module 3: Technical Score (0-100) ────────────────────────────────────────
-
-def score_technical(
-    history: list[dict],
-    benchmark: list[dict] | None = None,
-) -> tuple[float, dict, list[str]]:
-    """
-    history/benchmark: list of {"date","open","high","low","close","volume"}
-    Returns (score 0-100, breakdown, reasons).
-    """
-    reasons: list[str] = []
-
-    empty_bd = {
-        "ma_convergence":    {"score": 0, "max": 35, "value": None},
-        "volume_explosion":  {"score": 0, "max": 35, "value": None},
-        "relative_strength": {"score": 0, "max": 30, "value": None},
-    }
-
-    if not history or len(history) < 60:
-        return 0.0, empty_bd, ["차트 데이터 부족 (60일 미만)"]
-
-    closes = [d["close"] for d in history]
-    volumes = [d["volume"] for d in history]
-
-    # ── 1. MA Convergence + Bollinger Band Squeeze (0-35) ───────────────────
-    ma_score = 0
-    spread = None
-
-    if len(closes) >= 120:
-        ma20  = sum(closes[-20:])  / 20
-        ma60  = sum(closes[-60:])  / 60
-        ma120 = sum(closes[-120:]) / 120
-        mn = min(ma20, ma60, ma120)
-        spread = (max(ma20, ma60, ma120) - mn) / mn * 100 if mn > 0 else 999.0
-
-        if spread <= 1.5:
-            ma_score = 25
-            reasons.append(f"이평선 극도 수렴 {spread:.1f}% — 대형 이탈 임박")
-        elif spread <= 3.0:
-            ma_score = 20
-            reasons.append(f"이평선 수렴 {spread:.1f}%")
-        elif spread <= 5.0:
-            ma_score = 13
-        elif spread <= 8.0:
-            ma_score = 6
-        else:
-            ma_score = max(0, 6 - (spread - 8) * 0.5)
-
-    # ── Bollinger Band Width squeeze bonus (+0~10) ──────────────────────────
-    bb_bonus = 0
-    current_bbw = None
-    if len(closes) >= 20:
-        # Rolling 20-day BB widths (4σ / MA) for the entire history
-        bb_widths: list[float] = []
-        for i in range(20, len(closes) + 1):
-            window = closes[i - 20:i]
-            mn20 = sum(window) / 20
-            if mn20 > 0:
-                sd = _std(window)
-                bb_widths.append((4 * sd / mn20) * 100)
-
-        if bb_widths:
-            current_bbw = bb_widths[-1]
-            hist = bb_widths[:-1]
-            if len(hist) >= 20:
-                pct_rank = sum(1 for w in hist if current_bbw <= w) / len(hist)
-                # pct_rank near 1.0 = current width is lower than almost all history = squeeze
-                if pct_rank >= 0.95:
-                    bb_bonus = 10
-                    reasons.append(
-                        f"볼린저 밴드 폭 {current_bbw:.1f}% — 1년 기준 최저 수준 (에너지 압축)"
-                    )
-                elif pct_rank >= 0.80:
-                    bb_bonus = 5
-                    reasons.append(f"볼린저 밴드 폭 수축 {current_bbw:.1f}%")
-
-    ma_score = min(35, max(0, ma_score + bb_bonus))
-
-    # ── 2. Volume Explosion: best of last 5 days vs 60-day avg (0-35) ────────
-    if len(volumes) >= 65:
-        avg60_vol = sum(volumes[-65:-5]) / 60
-    else:
-        avg60_vol = sum(volumes[:-5]) / max(1, len(volumes) - 5) if len(volumes) > 5 else 0
-
-    vol_score = 0
-    best_ratio = 0.0
-    if avg60_vol > 0:
-        recent5 = history[-5:]
-        for d in recent5:
-            ratio = d["volume"] / avg60_vol * 100
-            if ratio > best_ratio:
-                best_ratio = ratio
-            if ratio >= 400 and d["close"] > d["open"]:
-                vol_score = 35
-                reasons.append(f"거래량 폭발 {ratio:.0f}% — 대량 장대양봉 (5일 이내)")
-            elif ratio >= 300 and d["close"] > d["open"]:
-                vol_score = max(vol_score, 24)
-            elif ratio >= 200:
-                vol_score = max(vol_score, 14)
-            elif ratio >= 150:
-                vol_score = max(vol_score, 7)
-
-    vol_score = min(35, max(0, vol_score))
-
-    # ── 3. Relative Strength vs NASDAQ benchmark (0-30) ──────────────────────
-    rs_score = 15  # neutral when no benchmark
-    rs_val: float | None = None
-
-    if benchmark and len(benchmark) >= 63 and len(closes) >= 63:
-        stock_ret = (closes[-1] - closes[-63]) / closes[-63] * 100
-        bench_c = [d["close"] for d in benchmark]
-        if len(bench_c) >= 63 and bench_c[-63] > 0:
-            bench_ret = (bench_c[-1] - bench_c[-63]) / bench_c[-63] * 100
-            rs_val = stock_ret - bench_ret
-            if rs_val >= 25:
-                rs_score = 30
-                reasons.append(f"상대 강도 +{rs_val:.1f}%p (3개월, NASDAQ 대비)")
-            elif rs_val >= 12:
-                rs_score = 22
-            elif rs_val >= 0:
-                rs_score = 15
-            elif rs_val >= -10:
-                rs_score = 7
+    # ── PSR Valuation (0-15) ──────────────────────────────────────────────────
+    ps = 5  # neutral default
+    if psr is not None and psr > 0:
+        if sect_psr and sect_psr > 0:
+            ratio = psr / sect_psr
+            if ratio <= 0.30:
+                ps = 15; reasons.append(f"PSR {psr:.1f}x — 섹터 평균({sect_psr:.1f}x) 대비 극단 저평가")
+            elif ratio <= 0.50:
+                ps = 12; reasons.append(f"PSR {psr:.1f}x — 섹터 대비 저평가")
+            elif ratio <= 0.70:
+                ps = 8
+            elif ratio <= 1.00:
+                ps = 4
             else:
-                rs_score = 0
+                ps = 0
+        else:
+            # Absolute PSR thresholds (no sector avg available)
+            if psr <= 3:
+                ps = 15; reasons.append(f"PSR {psr:.1f}x — 절대적 저평가")
+            elif psr <= 6:
+                ps = 10; reasons.append(f"PSR {psr:.1f}x")
+            elif psr <= 10:
+                ps = 6
+            elif psr <= 15:
+                ps = 3
+            else:
+                ps = 0
 
-    rs_score = min(30, max(0, rs_score))
-    total = min(100.0, ma_score + vol_score + rs_score)
+        # PEG bonus for profitable companies
+        if pe and eg and eg > 0.01 and pe > 0:
+            peg = pe / (eg * 100)
+            if peg <= 0.5:
+                ps = min(15, ps + 4); reasons.append(f"PEG {peg:.2f} — 성장 대비 저평가")
+            elif peg <= 1.0:
+                ps = min(15, ps + 2)
 
-    breakdown = {
-        "ma_convergence": {
-            "score": round(ma_score, 1), "max": 35,
-            "value": round(spread, 1) if spread is not None else None,
-        },
-        "volume_explosion": {
-            "score": round(vol_score, 1), "max": 35,
-            "value": round(best_ratio, 0) if best_ratio > 0 else None,
-        },
-        "relative_strength": {
-            "score": round(rs_score, 1), "max": 30,
-            "value": round(rs_val, 1) if rs_val is not None else None,
-        },
+    # YoY는 단년도 스냅샷 — CAGR 대비 신뢰도 낮으므로 20% 할인
+    if not using_cagr and growth is not None:
+        gs    = round(gs    * 0.8, 1)
+        r40s  = round(r40s  * 0.8, 1)
+
+    # ── OPM Gate: penalise mature profitable companies ────────────────────────
+    # OPM > 20% = not a "heavily-investing growth" company → cap at 25% of max
+    if opm is not None and opm > 0.20:
+        raw   = gs + r40s + ps
+        total = min(15, round(raw * 0.25, 1))
+        bd = {
+            "revenue_growth": {"score": round(gs * 0.25, 1),   "max": 25, "value": round(g_pct, 1) if growth is not None else None},
+            "rule_of_40":     {"score": round(r40s * 0.25, 1), "max": 20, "value": round(rule40, 1)},
+            "psr_valuation":  {"score": round(ps * 0.25, 1),   "max": 15, "value": round(psr, 2) if psr is not None else None},
+        }
+        return total, bd, [f"영업이익률 {op_pct:.0f}% — 성숙 수익 기업 (투자 성장주 스크린 대상 아님)"]
+
+    total = min(60, max(0.0, round(gs + r40s + ps, 1)))
+    bd = {
+        "revenue_growth": {"score": round(gs, 1),   "max": 25, "value": round(g_pct, 1) if growth is not None else None},
+        "rule_of_40":     {"score": round(r40s, 1), "max": 20, "value": round(rule40, 1)},
+        "psr_valuation":  {"score": round(ps, 1),   "max": 15, "value": round(psr, 2) if psr is not None else None},
     }
-    return round(total, 1), breakdown, reasons
+    return total, bd, reasons
 
 
-# ── Hybrid Final Score ────────────────────────────────────────────────────────
+# ── Stage 2: Chart Scoring (max 30) ──────────────────────────────────────────
+
+def score_chart(history: list[dict]) -> tuple[float, dict, list[str]]:
+    """
+    Contrarian bottom signals: RSI oversold + far below long-term MA + volume dry-up.
+    history: list of {"date","open","high","low","close","volume"}
+    """
+    reasons: list[str] = []
+    empty_bd = {
+        "rsi_oversold":    {"score": 0, "max": 10, "value": None},
+        "disparity_ratio": {"score": 0, "max": 10, "value": None},
+        "volume_dryup":    {"score": 0, "max": 10, "value": None},
+    }
+
+    if not history or len(history) < 30:
+        return 0.0, empty_bd, ["차트 데이터 부족 (30일 미만)"]
+
+    closes        = [d["close"]  for d in history]
+    volumes       = [d["volume"] for d in history]
+    current_price = closes[-1]
+
+    # ── 1. RSI(14) Oversold — current or recently touched 30 (0-10) ──────────
+    rsi_series: list[float] = []
+    for i in range(10, 0, -1):
+        sub = closes[:-i]
+        if len(sub) >= 15:
+            rsi_series.append(_rsi(sub))
+    rsi_series.append(_rsi(closes))
+
+    current_rsi = rsi_series[-1]
+    min_10d     = min(rsi_series) if rsi_series else 50.0
+    recovering  = (len(rsi_series) >= 4
+                   and min_10d <= 32
+                   and rsi_series[-1] > rsi_series[-3])
+
+    if current_rsi <= 25:
+        rsi_score = 10; reasons.append(f"RSI {current_rsi:.0f} — 극단 과매도")
+    elif current_rsi <= 30:
+        rsi_score = 10; reasons.append(f"RSI {current_rsi:.0f} — 과매도 진입")
+    elif recovering:
+        rsi_score = 8;  reasons.append(f"RSI 과매도 후 반등 중 (최저 {min_10d:.0f})")
+    elif current_rsi <= 40:
+        rsi_score = 4
+    elif current_rsi <= 45:
+        rsi_score = 1
+    else:
+        rsi_score = 0
+
+    # ── 2. Long-term Disparity — price vs MA120/200 ≤ 85% (0-10) ────────────
+    disparity_score = 0
+    disparity_val   = None
+    ref_label       = ""
+
+    if len(closes) >= 200:
+        ma            = sum(closes[-200:]) / 200
+        disparity_val = current_price / ma * 100
+        ref_label     = "MA200"
+    elif len(closes) >= 120:
+        ma            = sum(closes[-120:]) / 120
+        disparity_val = current_price / ma * 100
+        ref_label     = "MA120"
+
+    if disparity_val is not None:
+        if disparity_val <= 75:
+            disparity_score = 10; reasons.append(f"{ref_label} 이격도 {disparity_val:.0f}% — 극단 낙폭 과대")
+        elif disparity_val <= 80:
+            disparity_score = 10; reasons.append(f"{ref_label} 이격도 {disparity_val:.0f}% — 낙폭 과대")
+        elif disparity_val <= 85:
+            disparity_score = 7;  reasons.append(f"{ref_label} 이격도 {disparity_val:.0f}%")
+        elif disparity_val <= 90:
+            disparity_score = 3
+        else:
+            disparity_score = 0
+
+    # ── 3. Volume Dry-up: volume ≤ 50% avg + near 6M low (0-10) ─────────────
+    vol_score = 0
+    vol_ratio = None
+
+    if len(volumes) >= 25:
+        # 3-day average to filter out single-day noise
+        recent_vol  = sum(volumes[-3:]) / 3
+        avg20_vol   = sum(volumes[-23:-3]) / 20
+        if avg20_vol > 0:
+            vol_ratio = recent_vol / avg20_vol * 100
+
+            prices_6m   = closes[-min(126, len(closes)):]
+            near_bottom = current_price <= min(prices_6m) * 1.05
+
+            if vol_ratio <= 50 and near_bottom:
+                vol_score = 10; reasons.append(f"거래량 고갈 {vol_ratio:.0f}% — 매도 소진 바닥권")
+            elif vol_ratio <= 50:
+                vol_score = 5
+            elif near_bottom and vol_ratio <= 70:
+                vol_score = 4
+
+    total = min(30, rsi_score + disparity_score + vol_score)
+    bd = {
+        "rsi_oversold":    {"score": round(rsi_score, 1),       "max": 10, "value": round(current_rsi, 1)},
+        "disparity_ratio": {"score": round(disparity_score, 1), "max": 10, "value": round(disparity_val, 1) if disparity_val is not None else None},
+        "volume_dryup":    {"score": round(vol_score, 1),       "max": 10, "value": round(vol_ratio, 1) if vol_ratio is not None else None},
+    }
+    return round(total, 1), bd, reasons
+
+
+# ── Stage 3: Cash Flow Verification (max 10) ─────────────────────────────────
+
+def score_cashflow(fd: dict) -> tuple[float, dict, list[str]]:
+    """
+    Validates healthy investment expenditure (R&D, CapEx, EV/EBITDA).
+    fd keys: rd_ratio, capex_3y, ev_ebitda
+    """
+    reasons: list[str] = []
+
+    rd    = fd.get("rd_ratio")
+    capex = fd.get("capex_3y", [])
+    ev_eb = fd.get("ev_ebitda")
+
+    # R&D ratio (0-5)
+    if rd is None:
+        rd_score = 2
+    elif rd >= 0.25:
+        rd_score = 5; reasons.append(f"R&D {rd:.0%} — 강력한 기술 해자")
+    elif rd >= 0.15:
+        rd_score = 4; reasons.append(f"R&D {rd:.0%}")
+    elif rd >= 0.10:
+        rd_score = 2
+    elif rd >= 0.05:
+        rd_score = 1
+    else:
+        rd_score = 0
+
+    # CapEx consistency (0-3)
+    active = [v for v in capex if v is not None and v > 0]
+    if len(active) >= 3:
+        capex_score = 3; reasons.append("CapEx 3년 연속 투자")
+    elif len(active) >= 2:
+        capex_score = 2
+    elif len(active) >= 1:
+        capex_score = 1
+    else:
+        capex_score = 1  # unknown = neutral
+
+    # EV/EBITDA (0-2)
+    if ev_eb is None or ev_eb <= 0:
+        ev_score = 1
+    elif ev_eb < 15:
+        ev_score = 2; reasons.append(f"EV/EBITDA {ev_eb:.0f}x — 매력적")
+    elif ev_eb < 25:
+        ev_score = 1
+    else:
+        ev_score = 0
+
+    total = min(10, rd_score + capex_score + ev_score)
+    bd = {
+        "rd_ratio":          {"score": round(rd_score, 1),    "max": 5, "value": round(rd * 100, 1) if rd is not None else None},
+        "capex_consistency": {"score": round(capex_score, 1), "max": 3, "value": None},
+        "ev_ebitda_score":   {"score": round(ev_score, 1),    "max": 2, "value": round(ev_eb, 1) if ev_eb is not None and ev_eb > 0 else None},
+    }
+    return round(total, 1), bd, reasons
+
+
+# ── Final Score ───────────────────────────────────────────────────────────────
 
 def calculate_score(
     metrics: dict,
     sector_averages: dict | None = None,
     financial_data: dict | None = None,
     history: list[dict] | None = None,
-    benchmark: list[dict] | None = None,
-    narrative_keywords: list[str] | None = None,
+    benchmark: list[dict] | None = None,  # unused, kept for backward compat
 ) -> tuple[float, dict, str]:
     """
-    Hybrid score: Fundamental (50%) + Narrative (30%) + Technical (20%).
-    Merges metrics-level data (current_ratio, dividend_yield, rev_growth) into fd
-    so score_fundamental can access them without changing its signature.
+    Total = Financial(max 60) + Chart(max 30) + CashFlow(max 10)
     """
-    from narrative import score_narrative
-
-    # Merge metric-level fields into fd for score_fundamental
     fd = {
         **(financial_data or {}),
-        "current_ratio":  metrics.get("current_ratio"),
-        "dividend_yield": metrics.get("dividend_yield"),
-        "rev_growth":     metrics.get("revenue_growth"),
+        "operating_margin": metrics.get("operating_margin"),
+        "price_to_sales":   metrics.get("price_to_sales"),
+        "ev_ebitda":        metrics.get("ev_ebitda"),
+        "rev_growth":       metrics.get("revenue_growth"),
+        "pe_ratio":         metrics.get("pe_ratio"),
+        "earnings_growth":  metrics.get("earnings_growth"),
+        "sector_avg_psr":   (sector_averages or {}).get(metrics.get("sector", ""), None),
     }
 
     hist = history or []
-    kw   = narrative_keywords or []
 
-    f_score, f_bd, f_reasons = score_fundamental(fd)
-    n_score, n_bd, n_reasons = score_narrative(
-        sector=metrics.get("sector", ""),
-        industry=metrics.get("industry", ""),
-        current_price=metrics.get("current_price"),
-        target_price=metrics.get("target_mean_price"),
-        analyst_count=int(metrics.get("analyst_count") or 0),
-        keywords=kw,
-    )
-    t_score, t_bd, t_reasons = score_technical(hist, benchmark)
+    f_score,  f_bd,  f_reasons  = score_financial(fd)
+    c_score,  c_bd,  c_reasons  = score_chart(hist)
+    cf_score, cf_bd, cf_reasons = score_cashflow(fd)
 
-    total = round(0.5 * f_score + 0.3 * n_score + 0.2 * t_score, 1)
+    total = round(min(100.0, f_score + c_score + cf_score), 1)
+    bd    = {**f_bd, **c_bd, **cf_bd}
 
-    breakdown = {**f_bd, **n_bd, **t_bd}
-
-    all_reasons = f_reasons + n_reasons + t_reasons
-    if not all_reasons:
-        all_reasons = ["하이브리드 퀀트 분석 완료"]
-
-    reasoning = " · ".join(all_reasons[:6])
-    return total, breakdown, reasoning
+    all_reasons = f_reasons + c_reasons + cf_reasons
+    reasoning   = " · ".join(all_reasons[:6]) if all_reasons else "퀀트 분석 완료"
+    return total, bd, reasoning
 
 
 def compute_sector_averages(stocks: list[dict]) -> dict:
@@ -401,7 +330,24 @@ def compute_sector_averages(stocks: list[dict]) -> dict:
     return {}
 
 
-# ── Utility ───────────────────────────────────────────────────────────────────
+# ── Utilities ─────────────────────────────────────────────────────────────────
+
+def _rsi(closes: list[float], period: int = 14) -> float:
+    """Wilder's RSI(14) — standard exponential smoothing, matches trading platforms."""
+    if len(closes) < period + 2:
+        return 50.0
+    deltas = [closes[i] - closes[i - 1] for i in range(1, len(closes))]
+    # Seed: simple average of first `period` changes
+    avg_gain = sum(d for d in deltas[:period] if d > 0) / period
+    avg_loss = sum(-d for d in deltas[:period] if d < 0) / period
+    # Wilder's smoothing over the rest
+    for d in deltas[period:]:
+        avg_gain = (avg_gain * (period - 1) + (d if d > 0 else 0)) / period
+        avg_loss = (avg_loss * (period - 1) + (-d if d < 0 else 0)) / period
+    if avg_loss == 0:
+        return 100.0
+    return round(100 - 100 / (1 + avg_gain / avg_loss), 1)
+
 
 def _std(vals: list[float]) -> float:
     if len(vals) < 2:

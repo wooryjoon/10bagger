@@ -169,6 +169,7 @@ def fetch_us_metrics(ticker: str) -> dict | None:
             "beta": info.get("beta"),
             "target_mean_price": info.get("targetMeanPrice"),
             "analyst_count": int(info.get("numberOfAnalystOpinions") or 0),
+            "price_to_sales": _pos(info.get("priceToSalesTrailing12Months")),
         }
     except Exception as e:
         print(f"  [ERR] {ticker}: {e}")
@@ -277,14 +278,26 @@ def fetch_price_history(ticker: str, market: str, period: str = "1y") -> list[di
         rows = []
         for date, row in hist.iterrows():
             close = row.get(c_close)
-            if close is None or close <= 0:
+            try:
+                close_f = float(close)
+            except (TypeError, ValueError):
                 continue
+            if math.isnan(close_f) or close_f <= 0:
+                continue
+
+            def _safe(v, fallback):
+                try:
+                    f = float(v)
+                    return round(f if not math.isnan(f) else fallback, 4)
+                except (TypeError, ValueError):
+                    return round(fallback, 4)
+
             rows.append({
-                "date": str(date.date()),
-                "open":   round(float(row.get(c_open,  close)), 4),
-                "high":   round(float(row.get(c_high,  close)), 4),
-                "low":    round(float(row.get(c_low,   close)), 4),
-                "close":  round(float(close), 4),
+                "date":   str(date.date()),
+                "open":   _safe(row.get(c_open),  close_f),
+                "high":   _safe(row.get(c_high),  close_f),
+                "low":    _safe(row.get(c_low),   close_f),
+                "close":  round(close_f, 4),
                 "volume": int(row.get(c_vol, 0) or 0),
             })
         return rows
@@ -335,6 +348,7 @@ def fetch_financial_data(ticker: str, market_cap: float | None) -> dict:
         "capex_3y": [], "fcf_3y": [], "fcf_yields_3y": [],
         "current_fcf_yield": None, "accruals_ok": None,
         "ar_growth": None, "inv_growth": None, "buyback_yield": None,
+        "revenue_3y": [], "revenue_cagr": None, "rd_ratio": None,
     }
     try:
         t = yf.Ticker(ticker)
@@ -353,10 +367,48 @@ def fetch_financial_data(ticker: str, market_cap: float | None) -> dict:
                         "Net Income", "Net Income Common Stockholders",
                         "Net Income From Continuing Operation Net Minority Interest",
                     ])
+                    rev = _row(fins[col], [
+                        "Total Revenue", "Revenue", "Net Revenue", "Total Revenues",
+                    ])
+                    rd = _row(fins[col], [
+                        "Research And Development",
+                        "Research Development",
+                        "Research & Development",
+                        "Research And Development Expense",
+                        "Research Development Expense",
+                        "Research And Development Expenses",
+                        "Total Research And Development",
+                    ])
                     if oi is not None:
                         result["op_income_3y"].append(float(oi))
                     if ni is not None:
                         result["net_income_3y"].append(float(ni))
+                    if rev is not None:
+                        try:
+                            v = float(rev)
+                            if not math.isnan(v) and v > 0:
+                                result["revenue_3y"].append(v)
+                        except (TypeError, ValueError):
+                            pass
+                    if rd is not None:
+                        try:
+                            v = abs(float(rd))
+                            if not math.isnan(v) and v > 0:
+                                result.setdefault("_rd_3y", []).append(v)
+                        except (TypeError, ValueError):
+                            pass
+
+                # Revenue CAGR from 3-year data
+                rev3 = result["revenue_3y"]
+                if len(rev3) >= 2 and rev3[-1] > 0:
+                    n = len(rev3) - 1
+                    result["revenue_cagr"]      = (rev3[0] / rev3[-1]) ** (1.0 / n) - 1
+                    result["rev_cagr_years"]    = n  # scorer uses this to flag YoY fallback
+
+                # R&D ratio vs most recent revenue
+                rd3 = result.pop("_rd_3y", [])
+                if rd3 and rev3 and rev3[0] > 0:
+                    result["rd_ratio"] = rd3[0] / rev3[0]
         except Exception:
             pass
 
@@ -371,9 +423,15 @@ def fetch_financial_data(ticker: str, market_cap: float | None) -> dict:
                         "Cash From Operations", "Net Cash Provided By Operating Activities",
                     ])
                     capex = _row(cf[col], [
-                        "Capital Expenditure", "Capital Expenditures",
-                        "Purchase Of Plant Property And Equipment",
+                        "Capital Expenditure",
+                        "Capital Expenditures",
                         "Capital Expenditure Reported",
+                        "Capital Expenditures Reported",
+                        "Purchase Of Plant Property And Equipment",
+                        "Purchase Of Property Plant And Equipment",
+                        "Purchases Of Property Plant And Equipment",
+                        "Purchase Of Ppe",
+                        "Net Ppe Purchase And Sale",
                     ])
                     if ocf is not None:
                         result["op_cf_3y"].append(float(ocf))

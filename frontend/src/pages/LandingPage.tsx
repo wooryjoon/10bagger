@@ -21,7 +21,7 @@ function Navbar() {
             <TrendingUp size={14} color="white" />
           </div>
           <span className="font-bold text-[#191F28] text-base">
-            저평가 레이더
+            텐배거 레이더
           </span>
         </div>
         <button

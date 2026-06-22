@@ -23,8 +23,18 @@ export interface StatusResponse {
   }
 }
 
+export interface RunLogEntry {
+  ts: string
+  market: string
+  status: 'success' | 'failed'
+  stocks: number
+  duration_sec: number
+  error: string | null
+}
+
 export const api = {
   getStatus: () => get<StatusResponse>('/api/status'),
+  getRunLog: () => get<RunLogEntry[]>('/api/run-log'),
   getSectors: (market: Market) => get<Record<string, Stock[]>>(`/api/sectors?market=${market}`),
   getStock: (ticker: string) => get<Stock>(`/api/stocks/${encodeURIComponent(ticker)}`),
   getHistory: (ticker: string, period: Period) =>

@@ -9,48 +9,49 @@ from apscheduler.triggers.cron import CronTrigger
 
 from database import (
     init_db, get_stocks, get_stock,
-    get_counts, get_snapshots,
+    get_counts, get_snapshots, record_run_log, get_run_log,
 )
 from collector import fetch_price_history
 
 logger = logging.getLogger(__name__)
 
-# ── Benchmark cache (1-day TTL) ───────────────────────────────────────────────
-_benchmark_cache: list = []
-_benchmark_date = None
-
-
-def _get_benchmark() -> list:
-    global _benchmark_cache, _benchmark_date
-    today = datetime.now().date()
-    if _benchmark_date == today and _benchmark_cache:
-        return _benchmark_cache
-    from collector import fetch_benchmark_history
-    _benchmark_cache = fetch_benchmark_history("1y")
-    _benchmark_date = today
-    return _benchmark_cache
-
 
 # ── Scheduled jobs ────────────────────────────────────────────────────────────
 
 def _job_nasdaq():
+    import time as _t
     logger.info("=== 스케줄러: NASDAQ 수집 시작 ===")
+    start = _t.time()
+    status, stocks, error_msg = "failed", 0, None
     try:
         from collect import collect_nasdaq
         collect_nasdaq()
+        status = "success"
+        stocks = get_counts().get("nasdaq", 0)
         logger.info("=== 스케줄러: NASDAQ 수집 완료 ===")
     except Exception as e:
+        error_msg = str(e)
         logger.error(f"스케줄러 NASDAQ 오류: {e}")
+    finally:
+        record_run_log("nasdaq", status, stocks, int(_t.time() - start), error_msg)
 
 
 def _job_kospi():
+    import time as _t
     logger.info("=== 스케줄러: KOSPI 수집 시작 ===")
+    start = _t.time()
+    status, stocks, error_msg = "failed", 0, None
     try:
         from collect import collect_kospi
         collect_kospi()
+        status = "success"
+        stocks = get_counts().get("kospi", 0)
         logger.info("=== 스케줄러: KOSPI 수집 완료 ===")
     except Exception as e:
+        error_msg = str(e)
         logger.error(f"스케줄러 KOSPI 오류: {e}")
+    finally:
+        record_run_log("kospi", status, stocks, int(_t.time() - start), error_msg)
 
 
 _scheduler = BackgroundScheduler(timezone="Asia/Seoul")
@@ -123,7 +124,11 @@ async def stock_detail(ticker: str):
 async def stock_history(ticker: str, period: str = "1y"):
     stock = get_stock(ticker)
     market = stock["market"] if stock else "nasdaq"
-    return fetch_price_history(ticker, market, period)
+    try:
+        return fetch_price_history(ticker, market, period)
+    except Exception as e:
+        logger.error(f"history error {ticker}/{period}: {e}")
+        return []
 
 
 # ── Top pick ─────────────────────────────────────────────────────────────────
@@ -166,23 +171,18 @@ def analyze_stock(ticker: str):
 
     from collector import fetch_us_metrics, fetch_financial_data
     from scorer import calculate_score
-    from narrative import extract_narrative_keywords
 
     m = fetch_us_metrics(ticker)
     if not m:
         raise HTTPException(404, f"티커 '{ticker}'를 찾을 수 없습니다. 정확한 티커 심볼을 입력해 주세요.")
 
-    fin = fetch_financial_data(ticker, m.get("market_cap"))
+    fin  = fetch_financial_data(ticker, m.get("market_cap"))
     hist = fetch_price_history(ticker, "nasdaq", "1y")
-    benchmark = _get_benchmark()
-    keywords = extract_narrative_keywords()
 
     score, breakdown, reasoning = calculate_score(
         metrics=m,
         financial_data=fin,
         history=hist,
-        benchmark=benchmark,
-        narrative_keywords=keywords,
     )
 
     return {
@@ -197,6 +197,13 @@ def analyze_stock(ticker: str):
         "reasoning": reasoning,
         "updated_at": datetime.now().isoformat(),
     }
+
+
+# ── Run log ───────────────────────────────────────────────────────────────────
+
+@app.get("/api/run-log")
+async def run_log(limit: int = 30):
+    return get_run_log(limit=limit)
 
 
 # ── Sectors ───────────────────────────────────────────────────────────────────

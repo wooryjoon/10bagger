@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { useNavigate, Link } from "react-router-dom";
 import { TrendingDown, Clock, AlertCircle, Search } from "lucide-react";
-import { api, type StatusResponse } from "@/lib/api";
+import { api, type StatusResponse, type RunLogEntry } from "@/lib/api";
 import type { Stock, Market } from "@/types";
 
 const SECTOR_KO: Record<string, string> = {
@@ -102,7 +102,21 @@ function StockRow({ rank, stock }: { rank: number; stock: Stock }) {
         {m.roe != null ? fmt(m.roe * 100, 1, "%") : "—"}
       </td>
       <td className="px-2 sm:px-4 py-2.5 sm:py-3.5">
-        <ScoreBar score={stock.score} />
+        <div className="flex items-center gap-1.5">
+          <ScoreBar score={stock.score} />
+          {stock.investment_tier && (
+            <span
+              className="text-[10px] font-bold text-white px-1.5 py-0.5 rounded shrink-0"
+              style={{
+                background: stock.investment_tier === 1 ? '#D97706'
+                  : stock.investment_tier === 2 ? '#0066FF'
+                  : '#6B7280',
+              }}
+            >
+              T{stock.investment_tier}
+            </span>
+          )}
+        </div>
       </td>
       <td className="px-2 sm:px-4 py-2.5 sm:py-3.5 text-xs text-[#8B95A1] max-w-55 hidden lg:table-cell">
         <span className="line-clamp-2">{stock.reasoning}</span>
@@ -166,12 +180,71 @@ function SectorTable({ sector, stocks }: { sector: string; stocks: Stock[] }) {
   );
 }
 
+function RunLogSection({ logs }: { logs: RunLogEntry[] }) {
+  const [expanded, setExpanded] = useState(false);
+  if (logs.length === 0) return null;
+
+  const last = logs[0];
+  const isOk = last.status === "success";
+
+  function fmtDur(sec: number) {
+    if (sec < 60) return `${sec}초`;
+    return `${Math.floor(sec / 60)}분 ${sec % 60}초`;
+  }
+
+  return (
+    <div className="bg-[#F9FAFB] border-b border-[#E8EAED]">
+      <div className="max-w-6xl mx-auto px-4 sm:px-6">
+        <button
+          onClick={() => setExpanded((v) => !v)}
+          className="w-full flex items-center gap-3 py-2 text-left"
+        >
+          <span
+            className={`text-xs font-bold px-2 py-0.5 rounded-full text-white shrink-0 ${isOk ? "bg-[#22C55E]" : "bg-[#EF4444]"}`}
+          >
+            {isOk ? "성공" : "실패"}
+          </span>
+          <span className="text-xs text-[#191F28]">
+            마지막 수집: {last.ts}{" "}
+            <span className="text-[#8B95A1]">
+              ({last.market.toUpperCase()} · {last.stocks}종목 · {fmtDur(last.duration_sec)})
+            </span>
+          </span>
+          <span className="ml-auto text-[10px] text-[#B0B8C1] shrink-0">
+            수집 이력 {expanded ? "▲" : "▼"}
+          </span>
+        </button>
+
+        {expanded && (
+          <div className="pb-3 space-y-1">
+            {logs.map((l, i) => (
+              <div
+                key={i}
+                className="flex items-center gap-2 text-xs text-[#8B95A1] py-0.5"
+              >
+                <span
+                  className={`w-1.5 h-1.5 rounded-full shrink-0 ${l.status === "success" ? "bg-[#22C55E]" : "bg-[#EF4444]"}`}
+                />
+                <span className="text-[#191F28] tabular-nums w-36 shrink-0">{l.ts}</span>
+                <span className="w-14 shrink-0">{l.market.toUpperCase()}</span>
+                <span className="w-14 shrink-0">{l.stocks}종목</span>
+                <span className="w-16 shrink-0">{fmtDur(l.duration_sec)}</span>
+                {l.error && (
+                  <span className="text-[#EF4444] truncate max-w-48">{l.error}</span>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 function LastUpdatedBadge({
   snapshot,
-  market,
 }: {
   snapshot: StatusResponse["snapshots"]["nasdaq"];
-  market: Market;
 }) {
   if (!snapshot) {
     return (
@@ -194,22 +267,24 @@ function LastUpdatedBadge({
 }
 
 function TickerSearch({ className }: { className?: string }) {
-  const [query, setQuery] = useState("")
-  const navigate = useNavigate()
+  const [query, setQuery] = useState("");
+  const navigate = useNavigate();
 
   const submit = () => {
-    const t = query.trim().toUpperCase()
-    if (t) navigate(`/stock/${encodeURIComponent(t)}`)
-  }
+    const t = query.trim().toUpperCase();
+    if (t) navigate(`/stock/${encodeURIComponent(t)}`);
+  };
 
   return (
-    <div className={`flex items-center gap-1 bg-[#F2F4F6] rounded-xl px-3 py-1.5 ${className ?? ''}`}>
+    <div
+      className={`flex items-center gap-1 bg-[#F2F4F6] rounded-xl px-3 py-1.5 ${className ?? ""}`}
+    >
       <Search size={13} className="text-[#B0B8C1] shrink-0" />
       <input
         type="text"
         value={query}
-        onChange={e => setQuery(e.target.value)}
-        onKeyDown={e => e.key === 'Enter' && submit()}
+        onChange={(e) => setQuery(e.target.value)}
+        onKeyDown={(e) => e.key === "Enter" && submit()}
         placeholder="티커 검색  IREN, NVDA…"
         className="bg-transparent text-sm text-[#191F28] placeholder-[#B0B8C1] outline-none flex-1 min-w-0 w-28 sm:w-40"
       />
@@ -222,13 +297,14 @@ function TickerSearch({ className }: { className?: string }) {
         </button>
       )}
     </div>
-  )
+  );
 }
 
 function TopPickCard({ stock }: { stock: Stock }) {
-  const navigate = useNavigate()
-  const scoreCol = stock.score >= 75 ? '#22C55E' : stock.score >= 65 ? '#F59E0B' : '#6B8FE8'
-  const reasonParts = stock.reasoning.split(' · ').slice(0, 3)
+  const navigate = useNavigate();
+  const scoreCol =
+    stock.score >= 75 ? "#22C55E" : stock.score >= 65 ? "#F59E0B" : "#6B8FE8";
+  const reasonParts = stock.reasoning.split(" · ").slice(0, 3);
 
   return (
     <div className="relative overflow-hidden rounded-2xl bg-[#0A0F1C] px-6 py-5 shadow-lg">
@@ -242,8 +318,12 @@ function TopPickCard({ stock }: { stock: Stock }) {
             딱 하나만 산다면?
           </p>
           <div className="flex items-baseline gap-2 mb-1">
-            <span className="text-2xl font-extrabold text-white">{stock.ticker}</span>
-            <span className="text-sm text-[#8B95A1] truncate">{stock.name}</span>
+            <span className="text-2xl font-extrabold text-white">
+              {stock.ticker}
+            </span>
+            <span className="text-sm text-[#8B95A1] truncate">
+              {stock.name}
+            </span>
           </div>
           <span className="inline-block text-xs text-[#8B95A1] bg-white/5 border border-white/10 px-2.5 py-0.5 rounded-full">
             {stock.sector}
@@ -252,7 +332,10 @@ function TopPickCard({ stock }: { stock: Stock }) {
           {/* Reasons */}
           <ul className="mt-3 space-y-1">
             {reasonParts.map((r, i) => (
-              <li key={i} className="flex items-start gap-2 text-xs text-[#8B95A1]">
+              <li
+                key={i}
+                className="flex items-start gap-2 text-xs text-[#8B95A1]"
+              >
                 <span className="mt-0.5 w-1 h-1 rounded-full bg-[#6B9FFF] shrink-0" />
                 {r}
               </li>
@@ -264,13 +347,18 @@ function TopPickCard({ stock }: { stock: Stock }) {
         <div className="flex flex-col items-end gap-3 shrink-0">
           <div className="text-right">
             <p className="text-xs text-[#4B5563] mb-0.5">저평가 점수</p>
-            <p className="text-4xl font-extrabold tabular-nums" style={{ color: scoreCol }}>
+            <p
+              className="text-4xl font-extrabold tabular-nums"
+              style={{ color: scoreCol }}
+            >
               {Math.round(stock.score)}
               <span className="text-lg font-normal text-[#374151]">/100</span>
             </p>
           </div>
           <button
-            onClick={() => navigate(`/stock/${encodeURIComponent(stock.ticker)}`)}
+            onClick={() =>
+              navigate(`/stock/${encodeURIComponent(stock.ticker)}`)
+            }
             className="text-sm font-bold text-white bg-[#0066FF] px-4 py-2 rounded-xl hover:bg-[#0052CC] transition-colors"
           >
             분석 전체 보기 →
@@ -278,7 +366,7 @@ function TopPickCard({ stock }: { stock: Stock }) {
         </div>
       </div>
     </div>
-  )
+  );
 }
 
 export default function HomePage() {
@@ -287,6 +375,7 @@ export default function HomePage() {
   const [loading, setLoading] = useState(false);
   const [status, setStatus] = useState<StatusResponse | null>(null);
   const [topPick, setTopPick] = useState<Stock | null>(null);
+  const [runLog, setRunLog] = useState<RunLogEntry[]>([]);
 
   const loadSectors = useCallback(async (m: Market) => {
     setLoading(true);
@@ -294,8 +383,8 @@ export default function HomePage() {
       const data = await api.getSectors(m);
       const filtered: Record<string, Stock[]> = {};
       for (const [sector, stocks] of Object.entries(data)) {
-        const high = stocks.filter((s) => s.score >= 70);
-        if (high.length > 0) filtered[sector] = high;
+        const top = stocks.filter((s) => s.investment_tier != null);
+        if (top.length > 0) filtered[sector] = top;
       }
       setSectors(filtered);
     } finally {
@@ -305,6 +394,7 @@ export default function HomePage() {
 
   useEffect(() => {
     api.getStatus().then(setStatus).catch(() => {});
+    api.getRunLog().then(setRunLog).catch(() => {});
     api.getTopPick(market).then(setTopPick).catch(() => setTopPick(null));
     loadSectors(market);
   }, [market, loadSectors]);
@@ -322,12 +412,15 @@ export default function HomePage() {
         <div className="max-w-6xl mx-auto px-4 sm:px-6">
           <div className="flex items-center justify-between h-14">
             {/* Logo */}
-            <Link to="/" className="flex items-center gap-3 hover:opacity-75 transition-opacity shrink-0">
+            <Link
+              to="/"
+              className="flex items-center gap-3 hover:opacity-75 transition-opacity shrink-0"
+            >
               <div className="w-7 h-7 rounded-lg bg-[#0066FF] flex items-center justify-center">
                 <TrendingDown size={14} color="white" />
               </div>
               <span className="text-base font-bold text-[#191F28]">
-                저평가 레이더
+                텐배거 레이더
               </span>
             </Link>
 
@@ -352,7 +445,9 @@ export default function HomePage() {
               {/* Search + status — desktop only */}
               <div className="hidden sm:flex items-center gap-2">
                 <TickerSearch />
-                <LastUpdatedBadge snapshot={currentSnapshot ?? null} market={market} />
+                <LastUpdatedBadge
+                  snapshot={currentSnapshot ?? null}
+                />
               </div>
             </div>
           </div>
@@ -362,6 +457,9 @@ export default function HomePage() {
           </div>
         </div>
       </header>
+
+      {/* Run log — 수집 이력 */}
+      <RunLogSection logs={runLog} />
 
       {/* Sub-stats bar */}
       {status && (
@@ -387,7 +485,7 @@ export default function HomePage() {
                   {totalStocks}
                 </span>
                 종목 표시 중
-                <span className="ml-1.5 text-[#B0B8C1]">· 70점 이상만</span>
+                <span className="ml-1.5 text-[#B0B8C1]">· 심층분석 상위 10종목</span>
               </span>
             )}
             <span className="hidden sm:inline text-[#B0B8C1]">

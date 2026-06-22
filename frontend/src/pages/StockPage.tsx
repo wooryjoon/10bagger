@@ -4,9 +4,9 @@ import {
   AreaChart, Area, XAxis, YAxis, Tooltip,
   ResponsiveContainer, CartesianGrid,
 } from 'recharts'
-import { ArrowLeft, TrendingUp, TrendingDown, Banknote, Newspaper, Activity } from 'lucide-react'
+import { ArrowLeft, TrendingUp, TrendingDown, Banknote, Activity, Sparkles, DollarSign, Layers } from 'lucide-react'
 import { api } from '@/lib/api'
-import type { Stock, PricePoint, Period, ScoreBreakdown } from '@/types'
+import type { Stock, PricePoint, Period, ScoreBreakdown, Stage5Item } from '@/types'
 
 const PERIODS: { label: string; value: Period }[] = [
   { label: '1주', value: '1w' },
@@ -32,69 +32,67 @@ type CategoryDef = {
 
 const CATEGORIES: CategoryDef[] = [
   {
-    id: 'fundamental',
-    label: '펀더멘탈',
-    sublabel: '재무 건전성',
-    description: '기업이 실제로 돈을 잘 버는가',
+    id: 'financial',
+    label: '재무 스크리닝',
+    sublabel: '성장성 & 밸류에이션',
+    description: '고성장 투자 중인 저평가 기업인가',
     icon: Banknote,
     color: '#0066FF',
     bg: '#EEF4FF',
-    weight: '50%',
-    keys: ['safety', 'fcf_yield', 'liquidity', 'accruals', 'quality_growth', 'shareholder_yield'],
+    weight: '60%',
+    keys: ['revenue_growth', 'rule_of_40', 'psr_valuation'],
   },
   {
-    id: 'narrative',
-    label: '시장 내러티브',
-    sublabel: '테마 & 전문가 전망',
-    description: '지금 시장이 주목하는 종목인가',
-    icon: Newspaper,
-    color: '#7C3AED',
-    bg: '#F5F3FF',
-    weight: '30%',
-    keys: ['keyword_match', 'consensus'],
-  },
-  {
-    id: 'technical',
-    label: '기술적 분석',
-    sublabel: '차트 & 모멘텀',
-    description: '차트 패턴이 매수 타이밍을 가리키는가',
+    id: 'chart',
+    label: '차트 바닥권 분석',
+    sublabel: 'RSI · 이격도 · 거래량',
+    description: '주가가 과매도 바닥에 있는가',
     icon: Activity,
     color: '#D97706',
     bg: '#FFFBEB',
-    weight: '20%',
-    keys: ['ma_convergence', 'volume_explosion', 'relative_strength'],
+    weight: '30%',
+    keys: ['rsi_oversold', 'disparity_ratio', 'volume_dryup'],
+  },
+  {
+    id: 'cashflow',
+    label: '현금흐름 검증',
+    sublabel: 'R&D · CapEx · EV/EBITDA',
+    description: '미래 투자 지출이 건전한가',
+    icon: DollarSign,
+    color: '#059669',
+    bg: '#ECFDF5',
+    weight: '10%',
+    keys: ['rd_ratio', 'capex_consistency', 'ev_ebitda_score'],
   },
 ]
 
 const METRIC_DETAIL: Record<string, { label: string; hint: string }> = {
-  safety:             { label: '연속 흑자',        hint: '영업이익·현금흐름 2년 이상 흑자' },
-  fcf_yield:          { label: '현금 창출력',       hint: '시총 대비 잉여현금흐름 수익률' },
-  liquidity:          { label: '유동비율',           hint: '유동자산/유동부채 — 1.2x 이상이면 단기 안전' },
-  accruals:           { label: '이익 품질',          hint: '현금 이익 > 회계 이익이면 이익 조작 가능성 낮음' },
-  quality_growth:     { label: '성장 품질',          hint: '매출채권·재고 증가율이 매출 증가율 이하면 건전' },
-  shareholder_yield:  { label: '주주환원 수익률',    hint: '배당 수익률 + 자사주 매입 수익률 합산' },
-  keyword_match:      { label: '시장 테마',          hint: '현재 핫한 테마 섹터 해당 여부' },
-  consensus:          { label: '애널리스트 목표가',  hint: '전문가 평균 목표가 업사이드' },
-  ma_convergence:     { label: '이평선·BB 수렴',     hint: '20/60/120일선 수렴 + 볼린저 밴드 폭 최저 → 이탈 임박' },
-  volume_explosion:   { label: '거래량 급증',        hint: '최근 5일 이례적 대량거래 발생 여부' },
-  relative_strength:  { label: '상대 강도',          hint: 'NASDAQ 대비 3개월 수익률 초과 여부' },
+  revenue_growth:    { label: '매출 성장률',    hint: '3년 CAGR 또는 YoY — 20% 이상이 타겟' },
+  rule_of_40:        { label: 'Rule of 40',     hint: '매출성장률% + 영업이익률% ≥ 40%이면 우량 성장주' },
+  psr_valuation:     { label: 'PSR 저평가',     hint: '주가매출비율 — 섹터 평균 대비 낮을수록 저평가' },
+  rsi_oversold:      { label: 'RSI 과매도',     hint: 'RSI(14) ≤ 30 = 과매도 바닥권 진입' },
+  disparity_ratio:   { label: '장기 이격도',    hint: '120/200일 이평 대비 현재가 위치 — 85% 이하면 낙폭 과대' },
+  volume_dryup:      { label: '거래량 고갈',    hint: '20일 평균 대비 50% 이하 + 바닥권 = 매도 소진' },
+  rd_ratio:          { label: 'R&D 비중',       hint: '매출액 대비 연구개발비 — 15% 이상이면 기술적 해자' },
+  capex_consistency: { label: 'CapEx 지속성',   hint: '미래 인프라 투자가 꾸준히 집행되는지' },
+  ev_ebitda_score:   { label: 'EV/EBITDA',      hint: '감가상각 반영 실질 현금창출 대비 기업가치' },
 }
 
 function getCategoryInsight(id: string, pct: number): string {
-  if (id === 'fundamental') {
-    if (pct >= 70) return '재무 건전성 우수 — 안정적인 현금 창출력을 보유 중입니다.'
-    if (pct >= 40) return '기본 재무 요건은 충족하나 일부 개선 여지가 있습니다.'
-    return '재무 리스크에 주의가 필요합니다.'
+  if (id === 'financial') {
+    if (pct >= 70) return '고성장 투자 중인 기업 — 저평가 성장주 조건을 충족합니다.'
+    if (pct >= 40) return '일부 성장·밸류에이션 요건을 충족합니다.'
+    return '성숙 수익 기업이거나 성장 지표가 기준 미달입니다.'
   }
-  if (id === 'narrative') {
-    if (pct >= 70) return '현재 시장에서 가장 주목받는 테마 섹터에 속합니다.'
-    if (pct >= 40) return '일부 시장 트렌드와 연관성이 있습니다.'
-    return '현재 시장 핵심 테마와 거리가 있습니다.'
+  if (id === 'chart') {
+    if (pct >= 70) return '극단 과매도 바닥권 — 하방 리스크가 낮고 반등 가능성이 높습니다.'
+    if (pct >= 40) return '일부 과매도·바닥권 신호가 감지됩니다.'
+    return '차트 바닥권 신호가 아직 불충분합니다.'
   }
-  if (id === 'technical') {
-    if (pct >= 70) return '차트상 강한 매수 신호가 감지됩니다.'
-    if (pct >= 40) return '차트 신호가 혼재되어 있습니다.'
-    return '현재 차트 신호는 매수에 불리합니다.'
+  if (id === 'cashflow') {
+    if (pct >= 70) return 'R&D·CapEx 투자가 건전하게 집행되고 있습니다.'
+    if (pct >= 40) return '투자 현금흐름이 일부 양호합니다.'
+    return '투자 현금흐름 데이터가 부족하거나 미흡합니다.'
   }
   return ''
 }
@@ -249,6 +247,99 @@ function MetricCard({ label, value }: { label: string; value: string }) {
   )
 }
 
+function TierBadge({ tier }: { tier: 1 | 2 | 3 }) {
+  const cfg = {
+    1: { bg: '#D97706', label: 'Tier 1', sub: '최우선 투자' },
+    2: { bg: '#0066FF', label: 'Tier 2', sub: '유망 투자' },
+    3: { bg: '#6B7280', label: 'Tier 3', sub: '관찰 중' },
+  }[tier]
+  return (
+    <span className="inline-flex items-center gap-1.5 text-xs font-bold text-white px-2.5 py-1 rounded-full"
+      style={{ background: cfg.bg }}>
+      {cfg.label}
+      <span className="font-normal opacity-90">{cfg.sub}</span>
+    </span>
+  )
+}
+
+const STAGE5_METRICS: { key: string; label: string; hint: string }[] = [
+  { key: 'insider_activity',   label: '내부자 거래',  hint: '최근 6개월 내부자 순매수 비율 — 바닥권 확신 매수 여부' },
+  { key: 'institutional_flow', label: '기관 보유',    hint: '기관 투자자 보유 비중 — 높을수록 기관 검증 완료' },
+  { key: 'news_sentiment',     label: '뉴스 감성',    hint: '역발상 신호 — 극단 비관론일수록 과매도 저점' },
+]
+
+function Stage5Card({ stock }: { stock: Stock }) {
+  const bd = stock.stage5_breakdown!
+  const bonus = stock.stage5_score ?? 0
+
+  return (
+    <div className="border border-[#E8EAED] rounded-2xl overflow-hidden shadow-sm">
+      <div style={{ background: '#F0F0FF' }} className="px-5 pt-5 pb-4">
+        <div className="flex items-start justify-between gap-3">
+          <div className="flex items-center gap-3">
+            <div className="w-12 h-12 rounded-2xl flex items-center justify-center shrink-0"
+              style={{ background: '#4F46E5' }}>
+              <Layers size={22} color="white" />
+            </div>
+            <div>
+              <div className="flex items-center gap-2 flex-wrap">
+                <span className="text-base font-bold text-[#191F28]">심층 수급·감성 분석</span>
+                {stock.investment_tier && <TierBadge tier={stock.investment_tier} />}
+              </div>
+              <p className="text-xs text-[#8B95A1] mt-0.5">내부자·기관·뉴스 종합 — 상위 10종목 한정</p>
+            </div>
+          </div>
+          <div className="text-right shrink-0">
+            <p className="text-xs text-[#8B95A1]">심층 보너스</p>
+            <p className="text-xl font-bold tabular-nums text-[#4F46E5]">
+              +{bonus}
+              <span className="text-sm font-normal text-[#B0B8C1]">/15</span>
+            </p>
+          </div>
+        </div>
+      </div>
+
+      <div className="px-5 py-4 space-y-3.5 bg-white">
+        {STAGE5_METRICS.map(({ key, label, hint }) => {
+          const item = bd[key as keyof typeof bd]
+          if (!item || typeof item !== 'object' || !('score' in item)) return null
+          const s = item as Stage5Item
+          const pct = s.score / s.max
+          const col = s.score >= 4 ? '#22C55E' : s.score >= 2 ? '#F59E0B' : '#EF4444'
+          return (
+            <div key={key}>
+              <div className="flex items-center justify-between mb-1.5">
+                <div className="flex flex-col">
+                  <span className="text-xs font-semibold text-[#191F28]">{label}</span>
+                  <span className="text-[11px] text-[#B0B8C1]">{hint}</span>
+                </div>
+                <span className="text-xs font-bold tabular-nums ml-2 shrink-0" style={{ color: col }}>
+                  {s.score}/{s.max}
+                </span>
+              </div>
+              <div className="h-1.5 bg-[#F2F4F6] rounded-full overflow-hidden">
+                <div className="h-1.5 rounded-full transition-all"
+                  style={{ width: `${pct * 100}%`, background: col }} />
+              </div>
+            </div>
+          )
+        })}
+
+        {bd.headlines && bd.headlines.length > 0 && (
+          <div className="mt-2 pt-3 border-t border-[#F2F4F6]">
+            <p className="text-xs font-semibold text-[#191F28] mb-2">최근 주요 뉴스</p>
+            <div className="space-y-1.5">
+              {bd.headlines.slice(0, 3).map((h, i) => (
+                <p key={i} className="text-xs text-[#8B95A1] leading-relaxed">• {h}</p>
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
+
 // ── Page ──────────────────────────────────────────────────────────────────────
 
 export default function StockPage() {
@@ -263,18 +354,14 @@ export default function StockPage() {
   const [status, setStatus] = useState<'loading' | 'analyzing' | 'error' | 'ok'>('loading')
   const [historyLoading, setHistoryLoading] = useState(false)
 
+  // Load stock metadata — history is loaded separately so its failure never blocks the page
   useEffect(() => {
     setStatus('loading')
-    Promise.all([
-      api.getStock(decodedTicker),
-      api.getHistory(decodedTicker, period),
-    ])
-      .then(([s, h]) => { setStock(s); setHistory(h); setStatus('ok') })
+    api.getStock(decodedTicker)
+      .then(s => { setStock(s); setStatus('ok') })
       .catch((e: Error) => {
         if (e.message.includes('404')) {
-          // Ticker not in DB — run real-time analysis
           setStatus('analyzing')
-          api.getHistory(decodedTicker, period).then(setHistory).catch(() => {})
           api.analyzeStock(decodedTicker)
             .then(s => { setStock(s); setStatus('ok') })
             .catch(() => setStatus('error'))
@@ -284,11 +371,13 @@ export default function StockPage() {
       })
   }, [decodedTicker])
 
+  // Load price history whenever stock is available or period changes
   useEffect(() => {
     if (!stock) return
     setHistoryLoading(true)
     api.getHistory(decodedTicker, period)
       .then(setHistory)
+      .catch(() => setHistory([]))   // history 실패해도 빈 차트로 표시
       .finally(() => setHistoryLoading(false))
   }, [period, decodedTicker, stock])
 
@@ -317,7 +406,7 @@ export default function StockPage() {
             <p className="text-xs text-[#B0B8C1] mt-2">약 20~30초 소요됩니다</p>
           </div>
           <div className="flex gap-1.5 mt-2">
-            {['재무 건전성', '시장 내러티브', '기술적 분석'].map((step, i) => (
+            {['재무 스크리닝', '차트 바닥권', '현금흐름 검증'].map((step, i) => (
               <span key={step} className="text-xs px-3 py-1 rounded-full border border-[#E8EAED] text-[#8B95A1]"
                 style={{ animationDelay: `${i * 0.3}s` }}>
                 {step}
@@ -394,6 +483,11 @@ export default function StockPage() {
               {Math.round(stock.score)}
               <span className="text-base font-normal text-[#B0B8C1]">/100</span>
             </p>
+            {stock.investment_tier && (
+              <div className="mt-1.5">
+                <TierBadge tier={stock.investment_tier} />
+              </div>
+            )}
           </div>
         </div>
 
@@ -440,7 +534,7 @@ export default function StockPage() {
           <MetricCard label="EPS성장률" value={m.earnings_growth != null ? fmt(m.earnings_growth * 100, 1, '%') : '—'} />
         </div>
 
-        {/* Undervaluation analysis — 3 category cards */}
+        {/* Undervaluation analysis — 2 category cards */}
         <div>
           <h2 className="text-base font-bold text-[#191F28] mb-4">저평가 근거 분석</h2>
           <div className="space-y-4">
@@ -449,6 +543,36 @@ export default function StockPage() {
             ))}
           </div>
         </div>
+
+        {/* Stage 5 Deep Analysis */}
+        {stock.stage5_breakdown && <Stage5Card stock={stock} />}
+
+        {/* AI Narrative Comment */}
+        {stock.ai_comment && (
+          <div className="border border-[#E8EAED] rounded-2xl overflow-hidden shadow-sm">
+            <div style={{ background: '#F5F3FF' }} className="px-5 pt-5 pb-4">
+              <div className="flex items-center gap-3">
+                <div className="w-12 h-12 rounded-2xl flex items-center justify-center shrink-0"
+                  style={{ background: '#7C3AED' }}>
+                  <Sparkles size={22} color="white" />
+                </div>
+                <div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-base font-bold text-[#191F28]">AI 시장 내러티브 분석</span>
+                    <span className="text-[11px] font-semibold text-white px-2 py-0.5 rounded-full"
+                      style={{ background: '#7C3AED' }}>
+                      Claude AI
+                    </span>
+                  </div>
+                  <p className="text-xs text-[#8B95A1] mt-0.5">글로벌 투자 테마와의 연관성 평가</p>
+                </div>
+              </div>
+            </div>
+            <div className="px-5 py-4 bg-white">
+              <p className="text-sm text-[#3D4754] leading-relaxed">{stock.ai_comment}</p>
+            </div>
+          </div>
+        )}
 
         {/* 52w range */}
         {(m.week52_high != null || m.week52_low != null) && (
