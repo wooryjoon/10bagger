@@ -39,6 +39,8 @@ def init_db():
         ("stage5_score",     "REAL"),
         ("stage5_breakdown", "TEXT"),
         ("investment_tier",  "INTEGER"),
+        ("swing_score",      "REAL"),
+        ("swing_breakdown",  "TEXT"),
     ]:
         try:
             c.execute(f"ALTER TABLE stocks ADD COLUMN {col} {definition}")
@@ -84,6 +86,17 @@ def upsert_ai_comment(ticker: str, comment: str):
     conn.close()
 
 
+def upsert_swing(ticker: str, swing_score: float, swing_breakdown: dict):
+    conn = sqlite3.connect(DB_PATH)
+    c = conn.cursor()
+    c.execute(
+        "UPDATE stocks SET swing_score = ?, swing_breakdown = ? WHERE ticker = ?",
+        (swing_score, json.dumps(swing_breakdown, ensure_ascii=False), ticker),
+    )
+    conn.commit()
+    conn.close()
+
+
 def upsert_stage5(ticker: str, stage5_score: float, stage5_breakdown: dict, investment_tier: int):
     conn = sqlite3.connect(DB_PATH)
     c = conn.cursor()
@@ -124,6 +137,9 @@ def get_stocks(market=None, sector=None):
         d.setdefault("investment_tier", None)
         sb = d.get("stage5_breakdown")
         d["stage5_breakdown"] = json.loads(sb) if sb else None
+        d.setdefault("swing_score", None)
+        swb = d.get("swing_breakdown")
+        d["swing_breakdown"] = json.loads(swb) if swb else None
         result.append(d)
     return result
 
@@ -144,6 +160,9 @@ def get_stock(ticker):
         d.setdefault("investment_tier", None)
         sb = d.get("stage5_breakdown")
         d["stage5_breakdown"] = json.loads(sb) if sb else None
+        d.setdefault("swing_score", None)
+        swb = d.get("swing_breakdown")
+        d["swing_breakdown"] = json.loads(swb) if swb else None
         return d
     return None
 

@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { useNavigate, Link } from "react-router-dom";
 import { TrendingDown, Clock, AlertCircle, Search } from "lucide-react";
-import { api, type StatusResponse, type RunLogEntry } from "@/lib/api";
+import { api, type StatusResponse } from "@/lib/api";
 import type { Stock, Market } from "@/types";
 
 const SECTOR_KO: Record<string, string> = {
@@ -125,6 +125,79 @@ function StockRow({ rank, stock }: { rank: number; stock: Stock }) {
   );
 }
 
+function Tier1Section({ sectors }: { sectors: Record<string, Stock[]> }) {
+  const navigate = useNavigate();
+  const stocks = Object.values(sectors)
+    .flat()
+    .filter((s) => s.investment_tier === 1)
+    .sort((a, b) => b.score - a.score);
+
+  if (stocks.length === 0) return null;
+
+  return (
+    <section>
+      <div className="flex items-center gap-2 mb-3">
+        <span className="text-base font-bold text-[#191F28]">Tier 1 핵심 종목</span>
+        <span className="text-xs font-bold text-white bg-[#D97706] px-2 py-0.5 rounded-full">
+          {stocks.length}종목
+        </span>
+        <span className="text-xs text-[#8B95A1]">· 4단계 스크리닝 최상위</span>
+      </div>
+      <div className="border border-[#FDE68A] rounded-2xl overflow-hidden shadow-sm bg-[#FFFBEB]/40">
+        <table className="w-full">
+          <thead>
+            <tr className="bg-[#FFFBEB] border-b border-[#FDE68A]">
+              <th className="px-3 sm:px-5 py-3 text-left text-xs font-medium text-[#B0B8C1]">#</th>
+              <th className="px-2 sm:px-4 py-3 text-left text-xs font-medium text-[#B0B8C1]">종목</th>
+              <th className="px-2 sm:px-4 py-3 text-right text-xs font-medium text-[#B0B8C1]">현재가</th>
+              <th className="px-2 sm:px-4 py-3 text-right text-xs font-medium text-[#B0B8C1] hidden sm:table-cell">P/E</th>
+              <th className="px-2 sm:px-4 py-3 text-right text-xs font-medium text-[#B0B8C1] hidden sm:table-cell">P/B</th>
+              <th className="px-2 sm:px-4 py-3 text-right text-xs font-medium text-[#B0B8C1] hidden md:table-cell">ROE</th>
+              <th className="px-2 sm:px-4 py-3 text-left text-xs font-medium text-[#B0B8C1]">점수</th>
+              <th className="px-2 sm:px-4 py-3 text-left text-xs font-medium text-[#B0B8C1] hidden lg:table-cell">저평가 근거</th>
+            </tr>
+          </thead>
+          <tbody>
+            {stocks.map((s, i) => (
+              <tr
+                key={s.ticker}
+                onClick={() => navigate(`/stock/${encodeURIComponent(s.ticker)}`)}
+                className="border-b border-[#FEF3C7] last:border-0 hover:bg-[#FEF9EE] cursor-pointer transition-colors"
+              >
+                <td className="px-3 sm:px-5 py-2.5 sm:py-3.5 text-sm text-[#B0B8C1] tabular-nums">{i + 1}</td>
+                <td className="px-2 sm:px-4 py-2.5 sm:py-3.5">
+                  <div className="flex flex-col">
+                    <span className="text-sm font-bold text-[#191F28] tracking-tight">{s.ticker}</span>
+                    <span className="text-xs text-[#8B95A1] mt-0.5 truncate max-w-25 sm:max-w-40">{s.name}</span>
+                  </div>
+                </td>
+                <td className="px-2 sm:px-4 py-2.5 sm:py-3.5 text-right text-sm font-medium text-[#191F28] tabular-nums">
+                  {fmtPrice(s.data.current_price, s.market)}
+                </td>
+                <td className="px-2 sm:px-4 py-2.5 sm:py-3.5 text-right text-sm text-[#191F28] tabular-nums hidden sm:table-cell">
+                  {fmt(s.data.pe_ratio, 1, "x")}
+                </td>
+                <td className="px-2 sm:px-4 py-2.5 sm:py-3.5 text-right text-sm text-[#191F28] tabular-nums hidden sm:table-cell">
+                  {fmt(s.data.pb_ratio, 2, "x")}
+                </td>
+                <td className="px-2 sm:px-4 py-2.5 sm:py-3.5 text-right text-sm text-[#191F28] tabular-nums hidden md:table-cell">
+                  {s.data.roe != null ? fmt(s.data.roe * 100, 1, "%") : "—"}
+                </td>
+                <td className="px-2 sm:px-4 py-2.5 sm:py-3.5">
+                  <ScoreBar score={s.score} />
+                </td>
+                <td className="px-2 sm:px-4 py-2.5 sm:py-3.5 text-xs text-[#8B95A1] max-w-55 hidden lg:table-cell">
+                  <span className="line-clamp-2">{s.reasoning}</span>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </section>
+  );
+}
+
 function SectorTable({ sector, stocks }: { sector: string; stocks: Stock[] }) {
   return (
     <section>
@@ -180,66 +253,6 @@ function SectorTable({ sector, stocks }: { sector: string; stocks: Stock[] }) {
   );
 }
 
-function RunLogSection({ logs }: { logs: RunLogEntry[] }) {
-  const [expanded, setExpanded] = useState(false);
-  if (logs.length === 0) return null;
-
-  const last = logs[0];
-  const isOk = last.status === "success";
-
-  function fmtDur(sec: number) {
-    if (sec < 60) return `${sec}초`;
-    return `${Math.floor(sec / 60)}분 ${sec % 60}초`;
-  }
-
-  return (
-    <div className="bg-[#F9FAFB] border-b border-[#E8EAED]">
-      <div className="max-w-6xl mx-auto px-4 sm:px-6">
-        <button
-          onClick={() => setExpanded((v) => !v)}
-          className="w-full flex items-center gap-3 py-2 text-left"
-        >
-          <span
-            className={`text-xs font-bold px-2 py-0.5 rounded-full text-white shrink-0 ${isOk ? "bg-[#22C55E]" : "bg-[#EF4444]"}`}
-          >
-            {isOk ? "성공" : "실패"}
-          </span>
-          <span className="text-xs text-[#191F28]">
-            마지막 수집: {last.ts}{" "}
-            <span className="text-[#8B95A1]">
-              ({last.market.toUpperCase()} · {last.stocks}종목 · {fmtDur(last.duration_sec)})
-            </span>
-          </span>
-          <span className="ml-auto text-[10px] text-[#B0B8C1] shrink-0">
-            수집 이력 {expanded ? "▲" : "▼"}
-          </span>
-        </button>
-
-        {expanded && (
-          <div className="pb-3 space-y-1">
-            {logs.map((l, i) => (
-              <div
-                key={i}
-                className="flex items-center gap-2 text-xs text-[#8B95A1] py-0.5"
-              >
-                <span
-                  className={`w-1.5 h-1.5 rounded-full shrink-0 ${l.status === "success" ? "bg-[#22C55E]" : "bg-[#EF4444]"}`}
-                />
-                <span className="text-[#191F28] tabular-nums w-36 shrink-0">{l.ts}</span>
-                <span className="w-14 shrink-0">{l.market.toUpperCase()}</span>
-                <span className="w-14 shrink-0">{l.stocks}종목</span>
-                <span className="w-16 shrink-0">{fmtDur(l.duration_sec)}</span>
-                {l.error && (
-                  <span className="text-[#EF4444] truncate max-w-48">{l.error}</span>
-                )}
-              </div>
-            ))}
-          </div>
-        )}
-      </div>
-    </div>
-  );
-}
 
 function LastUpdatedBadge({
   snapshot,
@@ -375,7 +388,6 @@ export default function HomePage() {
   const [loading, setLoading] = useState(false);
   const [status, setStatus] = useState<StatusResponse | null>(null);
   const [topPick, setTopPick] = useState<Stock | null>(null);
-  const [runLog, setRunLog] = useState<RunLogEntry[]>([]);
 
   const loadSectors = useCallback(async (m: Market) => {
     setLoading(true);
@@ -394,7 +406,6 @@ export default function HomePage() {
 
   useEffect(() => {
     api.getStatus().then(setStatus).catch(() => {});
-    api.getRunLog().then(setRunLog).catch(() => {});
     api.getTopPick(market).then(setTopPick).catch(() => setTopPick(null));
     loadSectors(market);
   }, [market, loadSectors]);
@@ -426,6 +437,18 @@ export default function HomePage() {
 
             {/* Right group */}
             <div className="flex items-center gap-2 sm:gap-3">
+              {/* Page nav tabs */}
+              <div className="flex items-center gap-1 bg-[#F2F4F6] rounded-xl p-1">
+                <span className="px-2.5 sm:px-4 py-1.5 text-xs sm:text-sm font-semibold rounded-lg bg-white text-[#191F28] shadow-sm">
+                  저평가 종목
+                </span>
+                <Link
+                  to="/swing"
+                  className="px-2.5 sm:px-4 py-1.5 text-xs sm:text-sm font-semibold rounded-lg text-[#8B95A1] hover:text-[#191F28] transition-all"
+                >
+                  스윙 후보
+                </Link>
+              </div>
               {/* Market toggle */}
               <div className="flex items-center gap-1 bg-[#F2F4F6] rounded-xl p-1">
                 {(["nasdaq", "kospi"] as Market[]).map((m) => (
@@ -458,8 +481,7 @@ export default function HomePage() {
         </div>
       </header>
 
-      {/* Run log — 수집 이력 */}
-      <RunLogSection logs={runLog} />
+      {/* Run log — 수집 이력 (관리자용, 비표시) */}
 
       {/* Sub-stats bar */}
       {status && (
@@ -528,6 +550,7 @@ export default function HomePage() {
         ) : (
           <div className="space-y-10">
             {topPick && <TopPickCard stock={topPick} />}
+            <Tier1Section sectors={sectors} />
             {Object.entries(sectors).map(([sector, stocks]) => (
               <SectorTable key={sector} sector={sector} stocks={stocks} />
             ))}

@@ -55,8 +55,7 @@ def _job_kospi():
 
 
 _scheduler = BackgroundScheduler(timezone="Asia/Seoul")
-_scheduler.add_job(_job_nasdaq, CronTrigger(hour=7,  minute=0), id="nasdaq_daily")
-_scheduler.add_job(_job_kospi,  CronTrigger(hour=16, minute=0), id="kospi_daily")
+_scheduler.add_job(_job_nasdaq, CronTrigger(hour=7,  minute=10), id="nasdaq_daily")
 
 
 @asynccontextmanager
@@ -204,6 +203,35 @@ def analyze_stock(ticker: str):
 @app.get("/api/run-log")
 async def run_log(limit: int = 30):
     return get_run_log(limit=limit)
+
+
+# ── Swing candidates ──────────────────────────────────────────────────────────
+
+@app.get("/api/swing")
+async def swing_candidates():
+    """NASDAQ stocks with swing_score >= 5, sorted by swing_score DESC."""
+    from swing_scorer import swing_reasoning
+    stocks = get_stocks(market="nasdaq")
+    result = []
+    for s in stocks:
+        sw = s.get("swing_score") or 0
+        if sw >= 5:
+            s["swing_reasoning"] = swing_reasoning(s.get("swing_breakdown") or {})
+            result.append(s)
+    result.sort(key=lambda x: x.get("swing_score") or 0, reverse=True)
+    return result
+
+
+# ── Backtest results ──────────────────────────────────────────────────────────
+
+@app.get("/api/backtest")
+def get_backtest():
+    from pathlib import Path
+    import json
+    path = Path(__file__).parent / "backtest_results.json"
+    if not path.exists():
+        raise HTTPException(404, "백테스트 결과 없음")
+    return json.loads(path.read_text(encoding="utf-8"))
 
 
 # ── Sectors ───────────────────────────────────────────────────────────────────

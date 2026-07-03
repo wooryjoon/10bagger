@@ -20,7 +20,7 @@ from pathlib import Path
 ROOT = Path(__file__).parent
 sys.path.insert(0, str(ROOT))
 
-from database import init_db, upsert_stock, upsert_ai_comment, upsert_stage5, record_snapshot, record_run_log, get_counts, get_stocks
+from database import init_db, upsert_stock, upsert_ai_comment, upsert_stage5, upsert_swing, record_snapshot, record_run_log, get_counts, get_stocks
 from collector import (
     get_nasdaq200_tickers,
     get_kospi100_tickers,
@@ -56,6 +56,17 @@ def collect_nasdaq():
 
     tickers = get_nasdaq200_tickers()
     log.info(f"티커 {len(tickers)}개 확보")
+
+    # QQQ 3개월 수익률 (스윙 상대강도 계산용)
+    qqq_return_3m: float | None = None
+    try:
+        import yfinance as yf
+        _qqq_c = yf.Ticker("QQQ").history(period="1y")["Close"].dropna().tolist()
+        if len(_qqq_c) >= 63:
+            qqq_return_3m = (_qqq_c[-1] / _qqq_c[-63] - 1) * 100
+        log.info(f"QQQ 3개월 수익률: {qqq_return_3m:.1f}%" if qqq_return_3m is not None else "QQQ 데이터 없음")
+    except Exception as e:
+        log.info(f"QQQ 다운로드 실패 (스윙 RS 비활성화): {e}")
 
     # ── Phase 1: 기본 재무 지표 수집 ─────────────────────────────────────────
     log.info(f"\n[Phase 1] 기본 재무 지표 수집 ({len(tickers)}개 티커)")
@@ -107,10 +118,24 @@ def collect_nasdaq():
                 score_breakdown=breakdown,
                 reasoning=reasoning,
             )
+
+            # 스윙 점수 계산
+            from swing_scorer import compute_swing
+            closes  = [h["close"]           for h in hist] if hist else []
+            volumes = [h.get("volume", 0) or 0 for h in hist] if hist else []
+            sw_score, sw_bd = compute_swing(
+                closes=closes,
+                volumes=volumes,
+                week52_high=m.get("week52_high"),
+                week52_low=m.get("week52_low"),
+                qqq_return_3m=qqq_return_3m,
+            )
+            upsert_swing(ticker, sw_score, sw_bd)
+
             ok += 1
             log.info(
                 f"  [{i:3}/{len(all_metrics)}] {ticker:6}  "
-                f"점수={score:5.1f}  {reasoning[:55]}"
+                f"점수={score:5.1f}  스윙={sw_score:.0f}/10  {reasoning[:40]}"
             )
         except Exception as e:
             log.info(f"  [{i:3}/{len(all_metrics)}] {ticker:6}  오류: {e}")
@@ -143,11 +168,19 @@ def collect_nasdaq():
             time.sleep(0.5)
 
         # Re-rank within top 10 by enhanced score, assign Tier 1/2/3
+        # Tier 1 requires enhanced score >= 70; otherwise demoted to Tier 2
+        TIER1_MIN = 70
         stage5_results.sort(key=lambda x: x[1] + x[2], reverse=True)
         for rank, (ticker, base, bonus, breakdown) in enumerate(stage5_results, 1):
-            tier = 1 if rank <= 3 else 2 if rank <= 7 else 3
+            enhanced = base + bonus
+            if rank <= 3 and enhanced >= TIER1_MIN:
+                tier = 1
+            elif rank <= 7:
+                tier = 2
+            else:
+                tier = 3
             upsert_stage5(ticker, bonus, breakdown, tier)
-            log.info(f"  Tier {tier}: {ticker:6}  enhanced={base + bonus:.1f}")
+            log.info(f"  Tier {tier}: {ticker:6}  enhanced={enhanced:.1f}")
     except Exception as e:
         log.info(f"  Stage 5 전체 오류: {e}")
 

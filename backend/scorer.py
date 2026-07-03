@@ -131,51 +131,52 @@ def score_financial(fd: dict) -> tuple[float, dict, list[str]]:
 
 def score_chart(history: list[dict]) -> tuple[float, dict, list[str]]:
     """
-    Contrarian bottom signals: RSI oversold + far below long-term MA + volume dry-up.
+    Momentum-first chart scoring based on backtest results (2y, NASDAQ 200).
+    GoldenCross +9.8% / Disparity +7.0% / RSI -2.8% over 90d — reweighted accordingly.
+    Total max 30: GoldenCross(12) + Disparity(10) + Momentum20d(6) + RSI(2)
     history: list of {"date","open","high","low","close","volume"}
     """
     reasons: list[str] = []
     empty_bd = {
-        "rsi_oversold":    {"score": 0, "max": 10, "value": None},
+        "golden_cross":    {"score": 0, "max": 12, "value": None},
         "disparity_ratio": {"score": 0, "max": 10, "value": None},
-        "volume_dryup":    {"score": 0, "max": 10, "value": None},
+        "momentum_20d":    {"score": 0, "max": 6,  "value": None},
+        "rsi_oversold":    {"score": 0, "max": 2,  "value": None},
     }
 
     if not history or len(history) < 30:
         return 0.0, empty_bd, ["차트 데이터 부족 (30일 미만)"]
 
-    closes        = [d["close"]  for d in history]
-    volumes       = [d["volume"] for d in history]
+    closes        = [d["close"] for d in history]
     current_price = closes[-1]
 
-    # ── 1. RSI(14) Oversold — current or recently touched 30 (0-10) ──────────
-    rsi_series: list[float] = []
-    for i in range(10, 0, -1):
-        sub = closes[:-i]
-        if len(sub) >= 15:
-            rsi_series.append(_rsi(sub))
-    rsi_series.append(_rsi(closes))
+    # ── 1. Golden Cross: MA20 vs MA60 (0-12) — best backtest signal ──────────
+    gc_score = 0
+    gc_value = None
 
-    current_rsi = rsi_series[-1]
-    min_10d     = min(rsi_series) if rsi_series else 50.0
-    recovering  = (len(rsi_series) >= 4
-                   and min_10d <= 32
-                   and rsi_series[-1] > rsi_series[-3])
+    if len(closes) >= 60:
+        ma20_now  = sum(closes[-20:])  / 20
+        ma60_now  = sum(closes[-60:])  / 60
+        gc_value  = round(ma20_now / ma60_now * 100, 1)
 
-    if current_rsi <= 25:
-        rsi_score = 10; reasons.append(f"RSI {current_rsi:.0f} — 극단 과매도")
-    elif current_rsi <= 30:
-        rsi_score = 10; reasons.append(f"RSI {current_rsi:.0f} — 과매도 진입")
-    elif recovering:
-        rsi_score = 8;  reasons.append(f"RSI 과매도 후 반등 중 (최저 {min_10d:.0f})")
-    elif current_rsi <= 40:
-        rsi_score = 4
-    elif current_rsi <= 45:
-        rsi_score = 1
-    else:
-        rsi_score = 0
+        just_crossed = False
+        if len(closes) >= 61:
+            ma20_prev = sum(closes[-21:-1]) / 20
+            ma60_prev = sum(closes[-61:-1]) / 60
+            just_crossed = ma20_prev <= ma60_prev and ma20_now > ma60_now
 
-    # ── 2. Long-term Disparity — price vs MA120/200 ≤ 85% (0-10) ────────────
+        if just_crossed:
+            gc_score = 12; reasons.append("골든크로스 발생 — 단기 추세 전환")
+        elif ma20_now > ma60_now * 1.03:
+            gc_score = 10; reasons.append("MA20 > MA60 +3% — 상승 모멘텀 확인")
+        elif ma20_now > ma60_now * 1.01:
+            gc_score = 7;  reasons.append("MA20 > MA60 — 단기 상승 추세")
+        elif ma20_now > ma60_now:
+            gc_score = 4
+        elif ma20_now >= ma60_now * 0.98:
+            gc_score = 1  # 골든크로스 임박
+
+    # ── 2. Long-term Disparity — price vs MA120/200 (0-10) ───────────────────
     disparity_score = 0
     disparity_val   = None
     ref_label       = ""
@@ -201,32 +202,44 @@ def score_chart(history: list[dict]) -> tuple[float, dict, list[str]]:
         else:
             disparity_score = 0
 
-    # ── 3. Volume Dry-up: volume ≤ 50% avg + near 6M low (0-10) ─────────────
-    vol_score = 0
-    vol_ratio = None
+    # ── 3. Short-term Momentum: 20-day return (0-6) ───────────────────────────
+    mom_score = 0
+    mom_value = None
 
-    if len(volumes) >= 25:
-        # 3-day average to filter out single-day noise
-        recent_vol  = sum(volumes[-3:]) / 3
-        avg20_vol   = sum(volumes[-23:-3]) / 20
-        if avg20_vol > 0:
-            vol_ratio = recent_vol / avg20_vol * 100
+    if len(closes) >= 21:
+        mom_value = round((closes[-1] / closes[-21] - 1) * 100, 1)
+        if mom_value >= 15:
+            mom_score = 6; reasons.append(f"20일 수익률 +{mom_value:.0f}% — 강한 모멘텀")
+        elif mom_value >= 10:
+            mom_score = 5; reasons.append(f"20일 수익률 +{mom_value:.0f}%")
+        elif mom_value >= 7:
+            mom_score = 4; reasons.append(f"20일 수익률 +{mom_value:.0f}%")
+        elif mom_value >= 3:
+            mom_score = 2
+        elif mom_value >= 0:
+            mom_score = 1
 
-            prices_6m   = closes[-min(126, len(closes)):]
-            near_bottom = current_price <= min(prices_6m) * 1.05
+    # ── 4. RSI(14) — minor contrarian bonus only (0-2) ───────────────────────
+    rsi_score = 0
+    rsi_series: list[float] = []
+    for i in range(10, 0, -1):
+        sub = closes[:-i]
+        if len(sub) >= 15:
+            rsi_series.append(_rsi(sub))
+    rsi_series.append(_rsi(closes))
+    current_rsi = rsi_series[-1]
 
-            if vol_ratio <= 50 and near_bottom:
-                vol_score = 10; reasons.append(f"거래량 고갈 {vol_ratio:.0f}% — 매도 소진 바닥권")
-            elif vol_ratio <= 50:
-                vol_score = 5
-            elif near_bottom and vol_ratio <= 70:
-                vol_score = 4
+    if current_rsi <= 30:
+        rsi_score = 2; reasons.append(f"RSI {current_rsi:.0f} — 과매도 보조 신호")
+    elif current_rsi <= 35:
+        rsi_score = 1
 
-    total = min(30, rsi_score + disparity_score + vol_score)
+    total = min(30, gc_score + disparity_score + mom_score + rsi_score)
     bd = {
-        "rsi_oversold":    {"score": round(rsi_score, 1),       "max": 10, "value": round(current_rsi, 1)},
+        "golden_cross":    {"score": round(gc_score, 1),        "max": 12, "value": gc_value},
         "disparity_ratio": {"score": round(disparity_score, 1), "max": 10, "value": round(disparity_val, 1) if disparity_val is not None else None},
-        "volume_dryup":    {"score": round(vol_score, 1),       "max": 10, "value": round(vol_ratio, 1) if vol_ratio is not None else None},
+        "momentum_20d":    {"score": round(mom_score, 1),       "max": 6,  "value": mom_value},
+        "rsi_oversold":    {"score": round(rsi_score, 1),       "max": 2,  "value": round(current_rsi, 1)},
     }
     return round(total, 1), bd, reasons
 

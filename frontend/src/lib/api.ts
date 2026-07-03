@@ -1,9 +1,12 @@
 import type { Stock, PricePoint, Market, Period } from '@/types'
 
-const BASE = import.meta.env.VITE_API_URL || 'http://localhost:8000'
+const BASE = (import.meta.env.VITE_API_URL || 'http://localhost:8080').trim()
 
 async function get<T>(path: string): Promise<T> {
-  const res = await fetch(`${BASE}${path}`, { cache: 'no-store' })
+  const res = await fetch(`${BASE}${path}`, {
+    cache: 'no-store',
+    headers: { 'ngrok-skip-browser-warning': 'true' },
+  })
   if (!res.ok) throw new Error(`API ${res.status}: ${path}`)
   return res.json()
 }
@@ -41,4 +44,6 @@ export const api = {
     get<PricePoint[]>(`/api/stocks/${encodeURIComponent(ticker)}/history?period=${period}`),
   analyzeStock: (ticker: string) => get<Stock>(`/api/analyze/${encodeURIComponent(ticker)}`),
   getTopPick: (market: Market) => get<Stock>(`/api/top-pick?market=${market}`),
+  getStocks: (market: Market, limit = 200) => get<Stock[]>(`/api/stocks?market=${market}&limit=${limit}`),
+  getSwing: () => get<Stock[]>('/api/swing'),
 }

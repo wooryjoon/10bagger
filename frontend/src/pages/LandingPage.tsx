@@ -1,3 +1,4 @@
+import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import {
   TrendingUp,
@@ -9,6 +10,8 @@ import {
   Globe,
   Activity,
 } from "lucide-react";
+import { api } from "@/lib/api";
+import type { Stock } from "@/types";
 
 // ── 상단 네비게이션 ───────────────────────────────────────────────────────────
 function Navbar() {
@@ -28,43 +31,57 @@ function Navbar() {
           onClick={() => navigate("/app")}
           className="px-4 py-2 rounded-xl bg-[#0066FF] text-white text-sm font-semibold hover:bg-[#0052CC] transition-colors"
         >
-          분석 시작하기
+          분석 결과 보기
         </button>
       </div>
     </nav>
   );
 }
 
+const CARD_COLORS = ["#0066FF", "#7C3AED", "#059669"];
+
+function chartTag(stock: Stock): string {
+  const bd = stock.score_breakdown ?? {};
+  if ((bd.golden_cross?.score ?? 0) > 0) return "골든크로스";
+  if ((bd.disparity_ratio?.score ?? 0) > 0) return "MA200 이격도";
+  if ((bd.momentum_20d?.score ?? 0) > 0) return "20일 모멘텀";
+  return "재무 우량";
+}
+
 // ── 히어로 ───────────────────────────────────────────────────────────────────
 function Hero() {
   const navigate = useNavigate();
+  const [top3, setTop3] = useState<Stock[]>([]);
+
+  useEffect(() => {
+    api.getStocks("nasdaq", 3).then(setTop3).catch(() => {});
+  }, []);
+
   return (
     <section className="relative pt-32 pb-24 overflow-hidden bg-[#0A0F1C]">
-      {/* 배경 글로우 */}
       <div className="absolute top-0 left-1/2 -translate-x-1/2 w-[800px] h-[400px] rounded-full bg-[#0066FF]/20 blur-[120px] pointer-events-none" />
       <div className="absolute bottom-0 right-0 w-[400px] h-[300px] rounded-full bg-purple-600/10 blur-[100px] pointer-events-none" />
 
       <div className="relative max-w-6xl mx-auto px-6 text-center">
-        {/* 배지 */}
-        <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-[#0066FF]/10 border border-[#0066FF]/20 mb-8">
-          <span className="w-1.5 h-1.5 rounded-full bg-[#0066FF] animate-pulse" />
-          <span className="text-[#6B9FFF] text-xs font-semibold">
-            NASDAQ 200종목 · 매일 자동 분석
+        <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-[#0066FF]/10 border border-[#0066FF]/30 mb-8">
+          <span className="w-1.5 h-1.5 rounded-full bg-[#60A5FA] animate-pulse" />
+          <span className="text-[#93C5FD] text-xs font-semibold">
+            NASDAQ 190종목 · 매일 자동 분석
           </span>
         </div>
 
         <h1 className="text-4xl sm:text-6xl font-extrabold text-white leading-tight mb-6">
-          다음 급등주를
+          오를 종목을
           <br />
           <span className="text-transparent bg-clip-text bg-gradient-to-r from-[#4D9FFF] to-[#A78BFA]">
-            AI가 먼저 찾아냅니다
+            데이터로 찾습니다
           </span>
         </h1>
 
         <p className="text-[#8B95A1] text-lg sm:text-xl max-w-2xl mx-auto leading-relaxed mb-10">
-          재무 건전성 · 시장 테마 · 차트 타점을 결합한
+          재무 성장성, 차트 모멘텀, 현금흐름, 내부자 신호.
           <br className="hidden sm:block" />
-          3단계 하이브리드 스크리닝으로 저평가 종목을 발굴합니다
+          4단계 정량 분석으로 저평가 성장주를 매일 업데이트합니다.
         </p>
 
         <div className="flex flex-col sm:flex-row items-center justify-center gap-3">
@@ -72,41 +89,55 @@ function Hero() {
             onClick={() => navigate("/app")}
             className="flex items-center gap-2 px-7 py-3.5 rounded-2xl bg-[#0066FF] text-white font-bold text-base hover:bg-[#0052CC] transition-all hover:scale-105 shadow-lg shadow-[#0066FF]/30"
           >
-            무료로 분석 보기
+            오늘 분석 결과 보기
             <ArrowRight size={17} />
           </button>
-          <span className="text-[#4B5563] text-sm">로그인 없이 바로 확인</span>
+          <span className="text-[#4B5563] text-sm">
+            로그인 없음 · 광고 없음 · 무료
+          </span>
         </div>
 
-        {/* 미니 점수 프리뷰 카드 */}
         <div className="mt-16 flex flex-wrap justify-center gap-3 max-w-2xl mx-auto">
-          {[
-            { ticker: "NVDA", score: 81, tag: "AI 인프라", color: "#0066FF" },
-            { ticker: "ADBE", score: 75, tag: "SaaS 저평가", color: "#7C3AED" },
-            { ticker: "MU", score: 71, tag: "Memory 수요", color: "#059669" },
-          ].map((s) => (
-            <div
-              key={s.ticker}
-              className="flex items-center gap-3 px-5 py-3 rounded-2xl bg-white/5 border border-white/10 backdrop-blur-sm"
-            >
-              <div className="text-left">
-                <p className="text-white font-bold text-sm">{s.ticker}</p>
-                <p style={{ color: s.color }} className="text-xs font-medium">
-                  {s.tag}
-                </p>
-              </div>
-              <div className="w-px h-8 bg-white/10" />
-              <div className="text-right">
-                <p className="text-xs text-[#8B95A1]">점수</p>
-                <p
-                  style={{ color: s.color }}
-                  className="text-lg font-extrabold tabular-nums"
+          {top3.length > 0
+            ? top3.map((stock, i) => {
+                const color = CARD_COLORS[i] ?? "#0066FF";
+                return (
+                  <div
+                    key={stock.ticker}
+                    className="flex items-center gap-3 px-5 py-3 rounded-2xl bg-white/5 border border-white/10 backdrop-blur-sm"
+                  >
+                    <div className="text-left">
+                      <p className="text-white font-bold text-sm">{stock.ticker}</p>
+                      <p style={{ color }} className="text-xs font-medium">
+                        {chartTag(stock)}
+                      </p>
+                    </div>
+                    <div className="w-px h-8 bg-white/10" />
+                    <div className="text-right">
+                      <p className="text-xs text-[#8B95A1]">점수</p>
+                      <p style={{ color }} className="text-lg font-extrabold tabular-nums">
+                        {stock.score}
+                      </p>
+                    </div>
+                  </div>
+                );
+              })
+            : Array.from({ length: 3 }).map((_, i) => (
+                <div
+                  key={i}
+                  className="flex items-center gap-3 px-5 py-3 rounded-2xl bg-white/5 border border-white/10 animate-pulse"
                 >
-                  {s.score}
-                </p>
-              </div>
-            </div>
-          ))}
+                  <div className="text-left space-y-1">
+                    <div className="w-12 h-3 rounded bg-white/10" />
+                    <div className="w-16 h-2 rounded bg-white/10" />
+                  </div>
+                  <div className="w-px h-8 bg-white/10" />
+                  <div className="text-right space-y-1">
+                    <div className="w-6 h-2 rounded bg-white/10" />
+                    <div className="w-8 h-5 rounded bg-white/10" />
+                  </div>
+                </div>
+              ))}
         </div>
       </div>
     </section>
@@ -116,13 +147,16 @@ function Hero() {
 // ── 지표 숫자 ─────────────────────────────────────────────────────────────────
 function Stats() {
   const items = [
-    { value: "200", label: "NASDAQ 분석 종목" },
-    { value: "3", label: "복합 분석 모듈" },
-    { value: "9", label: "평가 세부 지표" },
+    { value: "190", label: "NASDAQ 분석 종목" },
+    { value: "4", label: "정량 분석 단계" },
+    { value: "12", label: "평가 세부 지표" },
     { value: "매일", label: "자동 업데이트" },
   ];
   return (
     <section className="py-14 border-b border-[#E8EAED] bg-white">
+      <p className="text-center text-sm font-medium text-[#8B95A1] mb-8">
+        재무·차트·현금흐름·내부자 신호를 동시에 분석해 최적 타이밍을 찾습니다
+      </p>
       <div className="max-w-6xl mx-auto px-6 grid grid-cols-2 sm:grid-cols-4 gap-8 text-center">
         {items.map((s) => (
           <div key={s.label}>
@@ -137,59 +171,76 @@ function Stats() {
   );
 }
 
-// ── 3단계 분석 모듈 ────────────────────────────────────────────────────────────
+// ── 4단계 분석 모듈 ────────────────────────────────────────────────────────────
 function HowItWorks() {
   const modules = [
     {
       icon: <Shield size={24} color="#0066FF" />,
-      badge: "50%",
+      badge: "60점",
       badgeColor: "#EFF6FF",
       badgeText: "#0066FF",
       step: "01",
-      title: "재무 건전성",
-      subtitle: "진짜 돈을 버는 기업인가?",
-      desc: "회계 장부가 아닌 실제 현금흐름을 봅니다. 적자 이력이 있거나 현금보다 부채가 많은 기업은 바로 탈락.",
+      title: "재무 스크리닝",
+      subtitle: "성장하는 기업인가?",
+      desc: "3년 매출 성장 궤적, Rule of 40, PSR 저평가를 동시에 검증합니다. 매출 성장과 수익성이 함께 개선되는 기업만 통과합니다.",
       items: [
-        "FCF 수익률 — 시가총액 대비 잉여현금",
-        "순현금 비율 — 부채 없는 재무 방어선",
-        "발생액 품질 — 이익의 진짜 현금화 여부",
+        "매출 3년 성장률 — 실질 성장 궤적 확인",
+        "Rule of 40 — 성장률 + 영업이익률 합산",
+        "PSR — 주가매출비율 저평가 여부",
       ],
       bg: "from-[#EFF6FF] to-white",
       border: "border-[#BFDBFE]",
     },
     {
-      icon: <Globe size={24} color="#7C3AED" />,
-      badge: "30%",
+      icon: <Activity size={24} color="#059669" />,
+      badge: "30점",
+      badgeColor: "#ECFDF5",
+      badgeText: "#059669",
+      step: "02",
+      title: "차트 모멘텀 분석",
+      subtitle: "상승 추세인가?",
+      desc: "골든크로스, MA200 이격도, 20일 모멘텀으로 추세 전환 시점을 포착합니다. 2년 백테스트 결과 골든크로스 신호 후 90일 평균 수익률 +9.8%.",
+      items: [
+        "골든크로스(MA20 > MA60) — 백테스트 검증 핵심 신호",
+        "MA200 이격도 — 역사적 저점 대비 현재 위치",
+        "20일 모멘텀 — 단기 가격 상승 탄력 확인",
+      ],
+      bg: "from-[#ECFDF5] to-white",
+      border: "border-[#A7F3D0]",
+    },
+    {
+      icon: <Zap size={24} color="#7C3AED" />,
+      badge: "10점",
       badgeColor: "#F5F3FF",
       badgeText: "#7C3AED",
-      step: "02",
-      title: "시장 테마",
-      subtitle: "지금 시장이 주목하는 산업인가?",
-      desc: "AI가 현재 글로벌 시장의 핵심 테마를 추출하고, 그 테마에 속한 기업에 높은 점수를 부여합니다.",
+      step: "03",
+      title: "현금흐름 검증",
+      subtitle: "지속 가능한 사업인가?",
+      desc: "R&D 투자, 설비투자 추세, EV/EBITDA로 사업의 내구성을 검증합니다. 성장 외형 뒤에 실질 수익 구조가 뒷받침되는지 확인합니다.",
       items: [
-        "AI · 반도체 병목 현상",
-        "전력 인프라 · 데이터센터 수요",
-        "애널리스트 목표주가 업사이드",
+        "R&D 비율 — 미래 성장 투자 수준",
+        "CapEx 3년 추세 — 설비투자 효율성",
+        "EV/EBITDA — 기업 가치 대비 수익성",
       ],
       bg: "from-[#F5F3FF] to-white",
       border: "border-[#DDD6FE]",
     },
     {
-      icon: <Activity size={24} color="#059669" />,
-      badge: "20%",
-      badgeColor: "#ECFDF5",
-      badgeText: "#059669",
-      step: "03",
-      title: "차트 타점",
-      subtitle: "지금이 사기 좋은 시점인가?",
-      desc: "에너지가 응축된 타이밍을 포착합니다. 이평선이 모이고 거래량이 폭발하는 순간이 진입 신호입니다.",
+      icon: <Globe size={24} color="#D97706" />,
+      badge: "+15점",
+      badgeColor: "#FFFBEB",
+      badgeText: "#D97706",
+      step: "04",
+      title: "심층 분석",
+      subtitle: "스마트머니 신호가 있는가?",
+      desc: "경영진 내부자 매수, 기관 보유율 증가, 뉴스 감성 지표를 종합합니다. 재무와 차트가 좋은 종목 중 상위 10개에만 적용됩니다.",
       items: [
-        "이평선 수렴 — 20/60/120일선 압축도",
-        "거래량 폭발 — 60일 평균 대비 400%↑ 양봉",
-        "상대 강도 — NASDAQ 지수 대비 초과 수익률",
+        "내부자 거래 — 경영진 매수 포지션",
+        "기관 보유율 — 스마트머니 유입 추이",
+        "뉴스 감성 — 비관론 극점 역발상 신호",
       ],
-      bg: "from-[#ECFDF5] to-white",
-      border: "border-[#A7F3D0]",
+      bg: "from-[#FFFBEB] to-white",
+      border: "border-[#FDE68A]",
     },
   ];
 
@@ -201,22 +252,21 @@ function HowItWorks() {
             How It Works
           </p>
           <h2 className="text-3xl sm:text-4xl font-extrabold text-[#191F28] mb-4">
-            3가지 렌즈로 종목을 봅니다
+            4단계 정량 분석
           </h2>
           <p className="text-[#8B95A1] text-base max-w-xl mx-auto">
-            좋은 기업이라도 타이밍이 맞지 않으면 수익이 없습니다.
+            재무 성장성부터 차트 모멘텀까지, 12개 지표로 저평가 종목을 선별합니다.
             <br />
-            재무·테마·차트를 동시에 분석해 최적 타점을 찾습니다.
+            좋은 기업이 좋은 타이밍에 있을 때만 높은 점수가 나옵니다.
           </p>
         </div>
 
-        <div className="grid sm:grid-cols-3 gap-6">
+        <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-6">
           {modules.map((m) => (
             <div
               key={m.step}
               className={`rounded-3xl border bg-gradient-to-b ${m.bg} ${m.border} p-7 flex flex-col gap-5`}
             >
-              {/* 헤더 */}
               <div className="flex items-center justify-between">
                 <div
                   className="w-11 h-11 rounded-2xl flex items-center justify-center"
@@ -228,14 +278,13 @@ function HowItWorks() {
                   className="text-xs font-bold px-2.5 py-1 rounded-full"
                   style={{ background: m.badgeColor, color: m.badgeText }}
                 >
-                  가중치 {m.badge}
+                  {m.badge}
                 </span>
               </div>
 
-              {/* 타이틀 */}
               <div>
                 <p className="text-xs font-semibold text-[#8B95A1] mb-1">
-                  MODULE {m.step}
+                  STAGE {m.step}
                 </p>
                 <h3 className="text-xl font-extrabold text-[#191F28] mb-1">
                   {m.title}
@@ -245,10 +294,8 @@ function HowItWorks() {
                 </p>
               </div>
 
-              {/* 설명 */}
               <p className="text-sm text-[#6B7280] leading-relaxed">{m.desc}</p>
 
-              {/* 체크리스트 */}
               <ul className="space-y-2">
                 {m.items.map((item) => (
                   <li
@@ -268,17 +315,18 @@ function HowItWorks() {
           ))}
         </div>
 
-        {/* 최종 점수 공식 */}
         <div className="mt-10 rounded-3xl bg-[#0A0F1C] p-8 text-center">
           <p className="text-[#8B95A1] text-sm mb-4">최종 점수 산출 공식</p>
-          <div className="flex flex-wrap items-center justify-center gap-3 text-base sm:text-lg font-bold">
-            <span className="text-[#60A5FA]">재무 건전성 × 50%</span>
+          <div className="flex flex-wrap items-center justify-center gap-3 text-sm sm:text-base font-bold">
+            <span className="text-[#60A5FA]">재무 스크리닝 60점</span>
             <span className="text-white">+</span>
-            <span className="text-[#A78BFA]">시장 테마 × 30%</span>
+            <span className="text-[#34D399]">차트 모멘텀 30점</span>
             <span className="text-white">+</span>
-            <span className="text-[#34D399]">차트 타점 × 20%</span>
+            <span className="text-[#A78BFA]">현금흐름 10점</span>
+            <span className="text-white">+</span>
+            <span className="text-[#FCD34D]">심층분석 최대 +15점</span>
             <span className="text-white">=</span>
-            <span className="text-white text-xl">최종 점수 (100점)</span>
+            <span className="text-white text-lg sm:text-xl">최대 115점</span>
           </div>
         </div>
       </div>
@@ -291,18 +339,18 @@ function WhyUs() {
   const points = [
     {
       icon: <BarChart2 size={22} color="#0066FF" />,
-      title: "감이 아닌 숫자",
-      desc: "모든 판단은 공개된 재무제표와 시장 데이터를 기반으로 합니다. 주관적 의견 없이 오직 수치로만 평가합니다.",
+      title: "12개 지표, 하나의 점수",
+      desc: "PSR, Rule of 40, 골든크로스, EV/EBITDA 등 12개 정량 지표를 단일 점수로 통합합니다. 어떤 종목이 더 나은지 한눈에 비교할 수 있습니다.",
     },
     {
       icon: <Zap size={22} color="#7C3AED" />,
-      title: "AI가 테마를 분석",
-      desc: "시시각각 변하는 시장 테마를 Claude AI가 읽고 어떤 산업이 주목받는지 자동으로 추출합니다.",
+      title: "백테스트로 검증된 신호",
+      desc: "NASDAQ 190종목, 최근 2년 데이터 기준 — 골든크로스 신호 후 90일 평균 수익률 +9.8%, 승률 54.8% (374건). 실적이 없는 신호는 채택하지 않습니다.",
     },
     {
       icon: <TrendingUp size={22} color="#059669" />,
-      title: "6개월 급등 가능성 타겟",
-      desc: "단기 투기가 아닌 향후 6개월 내 실질적 상승 가능성에 초점을 맞춰 종목을 선별합니다.",
+      title: "재무와 차트의 교집합",
+      desc: "재무가 탄탄한 기업이 차트 모멘텀까지 살아 있을 때만 높은 점수가 나옵니다. 좋은 기업을 좋은 타이밍에 찾는 것, 그게 이 분석의 핵심입니다.",
     },
   ];
   return (
@@ -313,7 +361,7 @@ function WhyUs() {
             Why Quant Pick
           </p>
           <h2 className="text-3xl sm:text-4xl font-extrabold text-[#191F28]">
-            왜 다른가요?
+            왜 정량 분석인가요?
           </h2>
         </div>
         <div className="grid sm:grid-cols-3 gap-6">
@@ -347,22 +395,22 @@ function CTA() {
       </div>
       <div className="relative max-w-2xl mx-auto px-6 text-center">
         <h2 className="text-3xl sm:text-4xl font-extrabold text-white mb-4">
-          오늘의 저평가 종목,
-          <br />
-          지금 바로 확인하세요
+          오늘의 분석 결과를 확인하세요
         </h2>
         <p className="text-[#8B95A1] text-base mb-10">
-          NASDAQ 200종목 중 점수 상위 종목이 매일 업데이트됩니다.
+          NASDAQ 190종목 분석 결과가 매일 업데이트됩니다.
+          <br />
+          로그인 없이 바로 확인할 수 있습니다.
         </p>
         <button
           onClick={() => navigate("/app")}
           className="inline-flex items-center gap-2 px-8 py-4 rounded-2xl bg-[#0066FF] text-white font-bold text-base hover:bg-[#0052CC] transition-all hover:scale-105 shadow-xl shadow-[#0066FF]/30"
         >
-          무료로 분석 보기
+          분석 결과 보기
           <ArrowRight size={18} />
         </button>
         <p className="mt-4 text-[#4B5563] text-sm">
-          로그인 없이 · 광고 없이 · 무료
+          무료 · 회원가입 없음 · 광고 없음
         </p>
       </div>
     </section>

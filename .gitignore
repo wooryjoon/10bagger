@@ -17,3 +17,16 @@ frontend/.env.production
 # OS
 .DS_Store
 Thumbs.db
+
+# 보안 / 민감 파일
+*.pem
+*.key
+ip.txt
+
+# 로그 / 자동생성 파일
+*.log
+backend/backtest_results.json
+
+# DB (로컬 데이터)
+*.db
+*.sqlite

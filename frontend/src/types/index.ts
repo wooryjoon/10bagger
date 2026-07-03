@@ -58,6 +58,9 @@ export interface Stock {
   stage5_score?: number | null
   stage5_breakdown?: Stage5Breakdown | null
   investment_tier?: 1 | 2 | 3 | null
+  swing_score?: number | null
+  swing_breakdown?: Record<string, { score: number; max: number; value: number | null }> | null
+  swing_reasoning?: string | null
   updated_at: string
 }
 
