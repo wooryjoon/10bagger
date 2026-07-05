@@ -24,6 +24,7 @@ Thumbs.db
 *.err
 ip.txt
 *credentials*
+secrets
 
 # 로그 / 자동생성 파일
 *.log
