@@ -21,7 +21,9 @@ Thumbs.db
 # 보안 / 민감 파일
 *.pem
 *.key
+*.err
 ip.txt
+*credentials*
 
 # 로그 / 자동생성 파일
 *.log

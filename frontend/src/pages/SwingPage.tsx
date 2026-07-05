@@ -32,6 +32,10 @@ function fmtPrice(val: number | null | undefined, market: Market) {
     : "$" + val.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
 
+function enhanced(s: Stock): number {
+  return (s.score ?? 0) + (s.stage5_score ?? 0);
+}
+
 function ScoreBar({ score }: { score: number }) {
   const color = score >= 70 ? "#0066FF" : score >= 50 ? "#6B8FE8" : "#B0B8C1";
   return (
@@ -89,7 +93,7 @@ function StockRow({ rank, stock }: { rank: number; stock: Stock }) {
       </td>
       <td className="px-2 sm:px-4 py-2.5 sm:py-3.5">
         <div className="flex flex-col gap-1">
-          <ScoreBar score={stock.score} />
+          <ScoreBar score={enhanced(stock)} />
           {stock.swing_score != null && <SwingBadge score={stock.swing_score} />}
         </div>
       </td>

@@ -51,6 +51,10 @@ function isStale(iso: string | null | undefined): boolean {
   return Date.now() - new Date(iso).getTime() > 25 * 60 * 60 * 1000; // > 25h
 }
 
+function enhanced(s: Stock): number {
+  return (s.score ?? 0) + (s.stage5_score ?? 0);
+}
+
 function ScoreBar({ score }: { score: number }) {
   const color = score >= 70 ? "#0066FF" : score >= 50 ? "#6B8FE8" : "#B0B8C1";
   return (
@@ -103,7 +107,7 @@ function StockRow({ rank, stock }: { rank: number; stock: Stock }) {
       </td>
       <td className="px-2 sm:px-4 py-2.5 sm:py-3.5">
         <div className="flex items-center gap-1.5">
-          <ScoreBar score={stock.score} />
+          <ScoreBar score={enhanced(stock)} />
           {stock.investment_tier && (
             <span
               className="text-[10px] font-bold text-white px-1.5 py-0.5 rounded shrink-0"
@@ -130,7 +134,7 @@ function Tier1Section({ sectors }: { sectors: Record<string, Stock[]> }) {
   const stocks = Object.values(sectors)
     .flat()
     .filter((s) => s.investment_tier === 1)
-    .sort((a, b) => b.score - a.score);
+    .sort((a, b) => enhanced(b) - enhanced(a));
 
   if (stocks.length === 0) return null;
 
@@ -184,7 +188,7 @@ function Tier1Section({ sectors }: { sectors: Record<string, Stock[]> }) {
                   {s.data.roe != null ? fmt(s.data.roe * 100, 1, "%") : "—"}
                 </td>
                 <td className="px-2 sm:px-4 py-2.5 sm:py-3.5">
-                  <ScoreBar score={s.score} />
+                  <ScoreBar score={enhanced(s)} />
                 </td>
                 <td className="px-2 sm:px-4 py-2.5 sm:py-3.5 text-xs text-[#8B95A1] max-w-55 hidden lg:table-cell">
                   <span className="line-clamp-2">{s.reasoning}</span>
@@ -316,7 +320,7 @@ function TickerSearch({ className }: { className?: string }) {
 function TopPickCard({ stock }: { stock: Stock }) {
   const navigate = useNavigate();
   const scoreCol =
-    stock.score >= 75 ? "#22C55E" : stock.score >= 65 ? "#F59E0B" : "#6B8FE8";
+    enhanced(stock) >= 75 ? "#22C55E" : enhanced(stock) >= 65 ? "#F59E0B" : "#6B8FE8";
   const reasonParts = stock.reasoning.split(" · ").slice(0, 3);
 
   return (
@@ -364,7 +368,7 @@ function TopPickCard({ stock }: { stock: Stock }) {
               className="text-4xl font-extrabold tabular-nums"
               style={{ color: scoreCol }}
             >
-              {Math.round(stock.score)}
+              {Math.round(enhanced(stock))}
               <span className="text-lg font-normal text-[#374151]">/100</span>
             </p>
           </div>
