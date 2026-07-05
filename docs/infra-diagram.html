@@ -1,0 +1,514 @@
+<title>10bagger 인프라 구조도</title>
+<style>
+  /* ── Tokens ── */
+  :root {
+    --bg: #0D1117;
+    --bg2: #161B22;
+    --bg3: #21262D;
+    --border: #30363D;
+    --text: #E6EDF3;
+    --text2: #8B949E;
+    --text3: #6E7681;
+    --blue: #388BFD;
+    --blue-dim: #1F3A5C;
+    --green: #3FB950;
+    --green-dim: #1A3A2A;
+    --orange: #F0883E;
+    --orange-dim: #3D2210;
+    --purple: #A371F7;
+    --purple-dim: #2D1F5E;
+    --yellow: #D29922;
+    --yellow-dim: #3A2D0A;
+    --arrow: #484F58;
+  }
+  @media (prefers-color-scheme: light) {
+    :root {
+      --bg: #F6F8FA;
+      --bg2: #FFFFFF;
+      --bg3: #F0F3F6;
+      --border: #D0D7DE;
+      --text: #1F2328;
+      --text2: #636C76;
+      --text3: #9198A1;
+      --blue: #0969DA;
+      --blue-dim: #DDF4FF;
+      --green: #1A7F37;
+      --green-dim: #DAFBE1;
+      --orange: #BC4C00;
+      --orange-dim: #FFF1E5;
+      --purple: #8250DF;
+      --purple-dim: #FBEFFF;
+      --yellow: #9A6700;
+      --yellow-dim: #FFF8C5;
+      --arrow: #AFBACC;
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #0D1117; --bg2: #161B22; --bg3: #21262D; --border: #30363D;
+    --text: #E6EDF3; --text2: #8B949E; --text3: #6E7681;
+    --blue: #388BFD; --blue-dim: #1F3A5C;
+    --green: #3FB950; --green-dim: #1A3A2A;
+    --orange: #F0883E; --orange-dim: #3D2210;
+    --purple: #A371F7; --purple-dim: #2D1F5E;
+    --yellow: #D29922; --yellow-dim: #3A2D0A;
+    --arrow: #484F58;
+  }
+  :root[data-theme="light"] {
+    --bg: #F6F8FA; --bg2: #FFFFFF; --bg3: #F0F3F6; --border: #D0D7DE;
+    --text: #1F2328; --text2: #636C76; --text3: #9198A1;
+    --blue: #0969DA; --blue-dim: #DDF4FF;
+    --green: #1A7F37; --green-dim: #DAFBE1;
+    --orange: #BC4C00; --orange-dim: #FFF1E5;
+    --purple: #8250DF; --purple-dim: #FBEFFF;
+    --yellow: #9A6700; --yellow-dim: #FFF8C5;
+    --arrow: #AFBACC;
+  }
+
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    font-size: 13px;
+    line-height: 1.5;
+    padding: 32px 24px 48px;
+    min-height: 100vh;
+  }
+
+  /* ── Header ── */
+  .page-header {
+    text-align: center;
+    margin-bottom: 40px;
+  }
+  .page-header h1 {
+    font-size: 22px;
+    font-weight: 700;
+    color: var(--text);
+    letter-spacing: -0.3px;
+  }
+  .page-header p {
+    color: var(--text2);
+    margin-top: 6px;
+    font-size: 13px;
+  }
+
+  /* ── Layout: three columns ── */
+  .diagram {
+    display: grid;
+    grid-template-columns: 1fr 48px 1fr 48px 1fr;
+    grid-template-rows: auto auto auto;
+    gap: 0;
+    max-width: 860px;
+    margin: 0 auto;
+    align-items: start;
+  }
+
+  /* ── Section labels ── */
+  .lane-label {
+    text-align: center;
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--text3);
+    padding-bottom: 10px;
+    border-bottom: 1px solid var(--border);
+    margin-bottom: 16px;
+  }
+
+  /* ── Cards ── */
+  .card {
+    background: var(--bg2);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 14px 16px;
+    position: relative;
+  }
+  .card + .card { margin-top: 10px; }
+
+  .card-title {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text);
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    margin-bottom: 5px;
+  }
+  .card-body {
+    font-size: 11.5px;
+    color: var(--text2);
+    line-height: 1.55;
+  }
+  .card-body code {
+    font-family: 'SF Mono', 'Cascadia Code', monospace;
+    font-size: 10.5px;
+    background: var(--bg3);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 1px 5px;
+    color: var(--text);
+  }
+
+  /* ── Badge dots ── */
+  .dot {
+    width: 8px; height: 8px;
+    border-radius: 50%;
+    flex-shrink: 0;
+    display: inline-block;
+  }
+  .dot-blue   { background: var(--blue); }
+  .dot-green  { background: var(--green); }
+  .dot-orange { background: var(--orange); }
+  .dot-purple { background: var(--purple); }
+  .dot-yellow { background: var(--yellow); }
+
+  /* ── Accent border-left by color ── */
+  .card-blue   { border-left: 3px solid var(--blue);   background: color-mix(in srgb, var(--blue-dim) 30%, var(--bg2)); }
+  .card-green  { border-left: 3px solid var(--green);  background: color-mix(in srgb, var(--green-dim) 30%, var(--bg2)); }
+  .card-orange { border-left: 3px solid var(--orange); background: color-mix(in srgb, var(--orange-dim) 30%, var(--bg2)); }
+  .card-purple { border-left: 3px solid var(--purple); background: color-mix(in srgb, var(--purple-dim) 30%, var(--bg2)); }
+  .card-yellow { border-left: 3px solid var(--yellow); background: color-mix(in srgb, var(--yellow-dim) 30%, var(--bg2)); }
+
+  /* ── Arrow column ── */
+  .arrow-col {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding-top: 44px;
+  }
+  .arrow-block {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 4px;
+    margin: 6px 0;
+  }
+  .arrow-line {
+    width: 1px;
+    height: 20px;
+    background: var(--arrow);
+  }
+  .arrow-head {
+    width: 0; height: 0;
+    border-left: 5px solid transparent;
+    border-right: 5px solid transparent;
+    border-top: 7px solid var(--arrow);
+  }
+  .arrow-label {
+    font-size: 9px;
+    color: var(--text3);
+    text-align: center;
+    max-width: 44px;
+    line-height: 1.3;
+    letter-spacing: 0.02em;
+  }
+
+  /* ── Tag chips ── */
+  .chip {
+    display: inline-block;
+    font-size: 10px;
+    font-weight: 600;
+    padding: 1px 7px;
+    border-radius: 20px;
+    margin-top: 6px;
+    margin-right: 4px;
+    font-family: 'SF Mono', 'Cascadia Code', monospace;
+  }
+  .chip-blue   { background: var(--blue-dim);   color: var(--blue);   border: 1px solid var(--blue); }
+  .chip-green  { background: var(--green-dim);  color: var(--green);  border: 1px solid var(--green); }
+  .chip-orange { background: var(--orange-dim); color: var(--orange); border: 1px solid var(--orange); }
+  .chip-purple { background: var(--purple-dim); color: var(--purple); border: 1px solid var(--purple); }
+
+  /* ── Full-width bottom section ── */
+  .full-row {
+    grid-column: 1 / -1;
+    margin-top: 32px;
+  }
+  .full-row .lane-label {
+    text-align: left;
+    border-bottom: 1px solid var(--border);
+    margin-bottom: 14px;
+  }
+
+  .ci-flow {
+    display: flex;
+    align-items: center;
+    gap: 0;
+    flex-wrap: nowrap;
+    overflow-x: auto;
+  }
+  .ci-step {
+    background: var(--bg2);
+    border: 1px solid var(--border);
+    border-radius: 7px;
+    padding: 10px 14px;
+    flex-shrink: 0;
+    min-width: 110px;
+    text-align: center;
+  }
+  .ci-step-icon { font-size: 18px; margin-bottom: 4px; }
+  .ci-step-name { font-size: 11px; font-weight: 600; color: var(--text); }
+  .ci-step-sub  { font-size: 10px; color: var(--text3); margin-top: 2px; }
+
+  .ci-arrow {
+    flex-shrink: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 0 4px;
+    gap: 2px;
+  }
+  .ci-arrow-line  { width: 20px; height: 1px; background: var(--arrow); }
+  .ci-arrow-head  {
+    width: 0; height: 0;
+    border-top: 4px solid transparent;
+    border-bottom: 4px solid transparent;
+    border-left: 6px solid var(--arrow);
+  }
+
+  /* ── Legend ── */
+  .legend {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 16px;
+    margin-top: 28px;
+    padding-top: 20px;
+    border-top: 1px solid var(--border);
+    justify-content: center;
+  }
+  .legend-item {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 11px;
+    color: var(--text2);
+  }
+
+  /* ── User row at top ── */
+  .user-row {
+    grid-column: 1 / -1;
+    display: flex;
+    justify-content: center;
+    margin-bottom: 24px;
+  }
+  .user-card {
+    background: var(--bg2);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 10px 28px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text);
+  }
+  .user-card span { font-size: 18px; }
+
+  .user-arrows {
+    grid-column: 1 / -1;
+    display: flex;
+    justify-content: space-around;
+    padding: 0 60px;
+    margin-bottom: 16px;
+  }
+  .user-arrow-item {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 3px;
+  }
+  .user-arrow-label {
+    font-size: 9px;
+    color: var(--text3);
+    letter-spacing: 0.04em;
+  }
+</style>
+
+<div class="page-header">
+  <h1>10bagger 인프라 구조도</h1>
+  <p>AWS 기반 프로덕션 배포 아키텍처</p>
+</div>
+
+<!-- User row -->
+<div class="diagram">
+  <div class="user-row">
+    <div class="user-card">
+      <span>🌐</span> 브라우저 (사용자)
+    </div>
+  </div>
+
+  <!-- User to CF arrows -->
+  <div class="user-arrows">
+    <div class="user-arrow-item">
+      <div class="arrow-line" style="height:18px;width:1px;background:var(--arrow)"></div>
+      <div class="arrow-head"></div>
+      <div class="user-arrow-label">HTTPS 접속</div>
+    </div>
+    <div style="width:48px"></div>
+    <div class="user-arrow-item">
+      <div class="arrow-line" style="height:18px;width:1px;background:var(--arrow)"></div>
+      <div class="arrow-head"></div>
+      <div class="user-arrow-label">API 호출</div>
+    </div>
+    <div style="width:48px"></div>
+    <div style="width:1px"></div>
+  </div>
+
+  <!-- Col headers -->
+  <div>
+    <div class="lane-label">프론트엔드</div>
+    <div class="card card-blue">
+      <div class="card-title"><span class="dot dot-blue"></span>CloudFront (CDN)</div>
+      <div class="card-body">
+        전 세계 엣지 서버에서 빠르게 응답<br>
+        HTTPS 자동 제공 · 캐시 무효화<br>
+        <code>d3ac6lzl77rvok.cloudfront.net</code>
+        <br><span class="chip chip-blue">HTTPS</span><span class="chip chip-purple">CDN</span>
+      </div>
+    </div>
+    <div class="card card-green" style="margin-top:10px">
+      <div class="card-title"><span class="dot dot-green"></span>S3 버킷</div>
+      <div class="card-body">
+        React 빌드 결과물 저장<br>
+        <code>index.html</code> · <code>assets/</code><br>
+        CloudFront만 읽기 접근 허용 (OAC)
+        <span class="chip chip-green">Static</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- Arrow 1 -->
+  <div class="arrow-col">
+    <div class="arrow-block">
+      <div class="arrow-line"></div>
+      <div class="arrow-head"></div>
+      <div class="arrow-label">HTTPS→HTTP 변환</div>
+    </div>
+  </div>
+
+  <!-- Col 2: Backend CF + EC2 -->
+  <div>
+    <div class="lane-label">백엔드</div>
+    <div class="card card-blue">
+      <div class="card-title"><span class="dot dot-blue"></span>CloudFront (API)</div>
+      <div class="card-body">
+        백엔드 API용 HTTPS 게이트웨이<br>
+        캐시 비활성화 · 헤더 전달<br>
+        <code>d14ks28n5incmk.cloudfront.net</code>
+        <span class="chip chip-blue">HTTPS</span>
+      </div>
+    </div>
+    <div class="card card-orange" style="margin-top:10px">
+      <div class="card-title"><span class="dot dot-orange"></span>EC2 t2.micro</div>
+      <div class="card-body">
+        Ubuntu 24.04 · Elastic IP 고정<br>
+        <code>nginx</code> → <code>uvicorn :8080</code><br>
+        systemd 자동 재시작<br>
+        <span class="chip chip-orange">FastAPI</span>
+      </div>
+    </div>
+    <div class="card" style="margin-top:10px">
+      <div class="card-title"><span class="dot dot-yellow" style="background:var(--yellow)"></span>SQLite DB</div>
+      <div class="card-body">
+        EC2 로컬 파일 <code>stocks.db</code><br>
+        190개 NASDAQ 종목 데이터<br>
+        별도 DB 서버 없음
+      </div>
+    </div>
+  </div>
+
+  <!-- Arrow 2 -->
+  <div class="arrow-col">
+    <div class="arrow-block">
+      <div class="arrow-line"></div>
+      <div class="arrow-head"></div>
+      <div class="arrow-label">매일 07:10 자동</div>
+    </div>
+  </div>
+
+  <!-- Col 3: Scheduler -->
+  <div>
+    <div class="lane-label">데이터 수집</div>
+    <div class="card card-purple">
+      <div class="card-title"><span class="dot dot-purple"></span>APScheduler</div>
+      <div class="card-body">
+        FastAPI 서버 내장 스케줄러<br>
+        매일 07:10 KST 자동 실행<br>
+        <code>collect.py --market nasdaq</code>
+        <span class="chip chip-purple">CronTrigger</span>
+      </div>
+    </div>
+    <div class="card" style="margin-top:10px">
+      <div class="card-title"><span class="dot" style="background:var(--text3)"></span>yfinance API</div>
+      <div class="card-body">
+        NASDAQ 190종목 시세·재무<br>
+        4단계 스코어링 계산<br>
+        Stage5 + 스윙 시그널
+      </div>
+    </div>
+    <div class="card" style="margin-top:10px">
+      <div class="card-title"><span class="dot" style="background:var(--text3)"></span>Claude API</div>
+      <div class="card-body">
+        상위 10종목 AI 코멘트 생성<br>
+        Anthropic claude-haiku
+      </div>
+    </div>
+  </div>
+
+  <!-- CI/CD full row -->
+  <div class="full-row">
+    <div class="lane-label">CI / CD 파이프라인</div>
+    <div class="ci-flow">
+      <div class="ci-step">
+        <div class="ci-step-icon">💻</div>
+        <div class="ci-step-name">로컬 작업</div>
+        <div class="ci-step-sub">코드 수정</div>
+      </div>
+      <div class="ci-arrow"><div class="ci-arrow-line"></div><div class="ci-arrow-head"></div></div>
+      <div class="ci-step" style="border-color:var(--orange);background:color-mix(in srgb,var(--orange-dim) 20%,var(--bg2))">
+        <div class="ci-step-icon">🐙</div>
+        <div class="ci-step-name">git push</div>
+        <div class="ci-step-sub">master 브랜치</div>
+      </div>
+      <div class="ci-arrow"><div class="ci-arrow-line"></div><div class="ci-arrow-head"></div></div>
+      <div class="ci-step" style="border-color:var(--purple);background:color-mix(in srgb,var(--purple-dim) 20%,var(--bg2))">
+        <div class="ci-step-icon">⚙️</div>
+        <div class="ci-step-name">GitHub Actions</div>
+        <div class="ci-step-sub">deploy.yml 실행</div>
+      </div>
+      <div class="ci-arrow"><div class="ci-arrow-line"></div><div class="ci-arrow-head"></div></div>
+      <div class="ci-step" style="border-color:var(--blue);background:color-mix(in srgb,var(--blue-dim) 20%,var(--bg2))">
+        <div class="ci-step-icon">🪣</div>
+        <div class="ci-step-name">S3 배포</div>
+        <div class="ci-step-sub">npm build → sync</div>
+      </div>
+      <div class="ci-arrow"><div class="ci-arrow-line"></div><div class="ci-arrow-head"></div></div>
+      <div class="ci-step" style="border-color:var(--blue);background:color-mix(in srgb,var(--blue-dim) 20%,var(--bg2))">
+        <div class="ci-step-icon">🔄</div>
+        <div class="ci-step-name">CF 캐시 무효화</div>
+        <div class="ci-step-sub">/* invalidation</div>
+      </div>
+      <div class="ci-arrow"><div class="ci-arrow-line"></div><div class="ci-arrow-head"></div></div>
+      <div class="ci-step" style="border-color:var(--orange);background:color-mix(in srgb,var(--orange-dim) 20%,var(--bg2))">
+        <div class="ci-step-icon">🖥️</div>
+        <div class="ci-step-name">EC2 배포</div>
+        <div class="ci-step-sub">SSH → git pull → restart</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Legend -->
+  <div class="full-row">
+    <div class="legend">
+      <div class="legend-item"><span class="dot dot-blue"></span> CloudFront / AWS 네트워크</div>
+      <div class="legend-item"><span class="dot dot-green"></span> S3 스토리지</div>
+      <div class="legend-item"><span class="dot dot-orange"></span> EC2 컴퓨팅</div>
+      <div class="legend-item"><span class="dot dot-purple"></span> 스케줄러 / 자동화</div>
+      <div class="legend-item"><span class="dot" style="background:var(--yellow)"></span> 데이터베이스</div>
+    </div>
+  </div>
+</div>
