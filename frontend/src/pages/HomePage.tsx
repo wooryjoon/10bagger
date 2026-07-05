@@ -387,16 +387,16 @@ function TopPickCard({ stock }: { stock: Stock }) {
 }
 
 export default function HomePage() {
-  const [market, setMarket] = useState<Market>("nasdaq");
+  const market: Market = "nasdaq";
   const [sectors, setSectors] = useState<Record<string, Stock[]>>({});
   const [loading, setLoading] = useState(false);
   const [status, setStatus] = useState<StatusResponse | null>(null);
   const [topPick, setTopPick] = useState<Stock | null>(null);
 
-  const loadSectors = useCallback(async (m: Market) => {
+  const loadSectors = useCallback(async () => {
     setLoading(true);
     try {
-      const data = await api.getSectors(m);
+      const data = await api.getSectors("nasdaq");
       const filtered: Record<string, Stock[]> = {};
       for (const [sector, stocks] of Object.entries(data)) {
         const top = stocks.filter((s) => s.investment_tier != null);
@@ -410,9 +410,9 @@ export default function HomePage() {
 
   useEffect(() => {
     api.getStatus().then(setStatus).catch(() => {});
-    api.getTopPick(market).then(setTopPick).catch(() => setTopPick(null));
-    loadSectors(market);
-  }, [market, loadSectors]);
+    api.getTopPick("nasdaq").then(setTopPick).catch(() => setTopPick(null));
+    loadSectors();
+  }, [loadSectors]);
 
   const totalStocks = Object.values(sectors).reduce(
     (s, arr) => s + arr.length,
@@ -453,22 +453,6 @@ export default function HomePage() {
                   스윙 후보
                 </Link>
               </div>
-              {/* Market toggle */}
-              <div className="flex items-center gap-1 bg-[#F2F4F6] rounded-xl p-1">
-                {(["nasdaq", "kospi"] as Market[]).map((m) => (
-                  <button
-                    key={m}
-                    onClick={() => setMarket(m)}
-                    className={`px-2.5 sm:px-4 py-1.5 text-xs sm:text-sm font-semibold rounded-lg transition-all ${
-                      market === m
-                        ? "bg-white text-[#191F28] shadow-sm"
-                        : "text-[#8B95A1] hover:text-[#191F28]"
-                    }`}
-                  >
-                    {m === "nasdaq" ? "나스닥" : "코스피"}
-                  </button>
-                ))}
-              </div>
               {/* Search + status — desktop only */}
               <div className="hidden sm:flex items-center gap-2">
                 <TickerSearch />
@@ -498,13 +482,6 @@ export default function HomePage() {
               </span>
               종목
             </span>
-            <span>
-              코스피{" "}
-              <span className="text-[#191F28] font-semibold">
-                {status.kospi_stocks}
-              </span>
-              종목
-            </span>
             {totalStocks > 0 && (
               <span>
                 <span className="text-[#0066FF] font-semibold">
@@ -515,7 +492,7 @@ export default function HomePage() {
               </span>
             )}
             <span className="hidden sm:inline text-[#B0B8C1]">
-              매일 자동 수집 · 나스닥 07:00 / 코스피 16:00
+              매일 07:10 자동 수집
             </span>
           </div>
         </div>
