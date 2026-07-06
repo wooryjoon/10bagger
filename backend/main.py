@@ -4,6 +4,8 @@ from datetime import datetime
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from apscheduler.schedulers.background import BackgroundScheduler
+from apscheduler.triggers.cron import CronTrigger
 
 from database import (
     init_db, get_stocks, get_stock,
@@ -14,10 +16,38 @@ from collector import fetch_price_history
 logger = logging.getLogger(__name__)
 
 
+# ── Scheduled jobs ────────────────────────────────────────────────────────────
+
+def _job_nasdaq():
+    import time as _t
+    logger.info("=== 스케줄러: NASDAQ 수집 시작 ===")
+    start = _t.time()
+    status, stocks, error_msg = "failed", 0, None
+    try:
+        from collect import collect_nasdaq
+        collect_nasdaq()
+        status = "success"
+        stocks = get_counts().get("nasdaq", 0)
+        logger.info("=== 스케줄러: NASDAQ 수집 완료 ===")
+    except Exception as e:
+        error_msg = str(e)
+        logger.error(f"스케줄러 NASDAQ 오류: {e}")
+    finally:
+        record_run_log("nasdaq", status, stocks, int(_t.time() - start), error_msg)
+
+
+_scheduler = BackgroundScheduler(timezone="Asia/Seoul")
+_scheduler.add_job(_job_nasdaq, CronTrigger(hour=7, minute=10, day_of_week='mon-fri'), id="nasdaq_daily")
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     init_db()
+    _scheduler.start()
+    logger.info("스케줄러 시작 — NASDAQ 매일 07:10 KST (월~금)")
     yield
+    _scheduler.shutdown(wait=False)
+    logger.info("스케줄러 종료")
 
 
 app = FastAPI(title="Investment Dashboard API", lifespan=lifespan)
