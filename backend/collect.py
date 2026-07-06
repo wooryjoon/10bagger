@@ -144,6 +144,7 @@ def collect_nasdaq():
 
     record_snapshot("nasdaq", ok, 0)
     log.info(f"\nNASDAQ 완료 — 종목 {ok}/{len(all_metrics)}개 저장")
+    push_snapshot_to_git()
 
     # ── Phase 3: 상위 10개 종목 심층 수급·감성 분석 (Stage 5) ─────────────────
     log.info(f"\n[Phase 3] 상위 10개 종목 심층 수급·감성 분석 (Stage 5)...")
@@ -205,6 +206,73 @@ def collect_nasdaq():
         except Exception as e:
             log.info(f"  {s['ticker']:6}  AI 코멘트 오류: {e}")
         time.sleep(0.5)
+
+
+# ── 스냅샷 GitHub 푸시 ───────────────────────────────────────────────────────
+
+def push_snapshot_to_git():
+    import json, os, subprocess
+    from datetime import datetime
+    import pytz
+
+    token = os.environ.get("GITHUB_TOKEN")
+    if not token:
+        log.warning("GITHUB_TOKEN 미설정 — 스냅샷 푸시 건너뜀")
+        return
+
+    today = datetime.now(tz=pytz.timezone("Asia/Seoul")).strftime("%Y-%m-%d")
+    stocks = get_stocks(market="nasdaq")
+
+    snapshot = {
+        "updated_at": today,
+        "stock_count": len(stocks),
+        "stocks": [
+            {
+                "ticker": s["ticker"],
+                "name": s["name"],
+                "sector": s.get("sector"),
+                "score": s.get("score"),
+                "stage5_score": s.get("stage5_score"),
+                "investment_tier": s.get("investment_tier"),
+                "swing_score": s.get("swing_score"),
+                "reasoning": s.get("reasoning"),
+            }
+            for s in stocks
+        ],
+    }
+
+    repo_root = ROOT.parent
+    snap_dir = repo_root / "snapshots"
+    snap_dir.mkdir(exist_ok=True)
+    snap_path = snap_dir / "nasdaq_latest.json"
+    prev_path = snap_dir / "nasdaq_previous.json"
+
+    # Rotate: current latest → previous (so new-picks comparison works next week)
+    if snap_path.exists():
+        import shutil
+        shutil.copy2(snap_path, prev_path)
+
+    snap_path.write_text(json.dumps(snapshot, ensure_ascii=False, indent=2), encoding="utf-8")
+
+    try:
+        repo_url = f"https://wooryjoon:{token}@github.com/wooryjoon/10bagger.git"
+        subprocess.run(["git", "config", "user.email", "wooryjoon@gmail.com"], cwd=repo_root, check=True)
+        subprocess.run(["git", "config", "user.name", "10bagger-bot"], cwd=repo_root, check=True)
+        subprocess.run(["git", "remote", "set-url", "origin", repo_url], cwd=repo_root, check=True)
+        subprocess.run(["git", "add", str(snap_path)], cwd=repo_root, check=True)
+        if prev_path.exists():
+            subprocess.run(["git", "add", str(prev_path)], cwd=repo_root, check=True)
+        result = subprocess.run(
+            ["git", "commit", "-m", f"data: nasdaq snapshot {today}"],
+            cwd=repo_root, capture_output=True, text=True
+        )
+        if result.returncode == 0:
+            subprocess.run(["git", "push", "origin", "master"], cwd=repo_root, check=True)
+            log.info(f"스냅샷 GitHub 푸시 완료 ({today})")
+        else:
+            log.info("스냅샷 변경사항 없음 — 푸시 생략")
+    except Exception as e:
+        log.error(f"스냅샷 푸시 실패: {e}")
 
 
 # ── KOSPI ─────────────────────────────────────────────────────────────────────

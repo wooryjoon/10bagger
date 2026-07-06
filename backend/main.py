@@ -216,6 +216,45 @@ def get_backtest():
     return json.loads(path.read_text(encoding="utf-8"))
 
 
+# ── New picks (이번 주 신규 등장 종목) ──────────────────────────────────────────
+
+@app.get("/api/new-picks")
+async def new_picks():
+    """
+    Return tiered stocks that were NOT tiered in the previous snapshot.
+    Requires snapshots/nasdaq_previous.json to exist (written by push_snapshot_to_git).
+    """
+    import json
+    from pathlib import Path
+
+    repo_root = Path(__file__).parent.parent
+    prev_path = repo_root / "snapshots" / "nasdaq_previous.json"
+
+    if not prev_path.exists():
+        return []
+
+    with prev_path.open(encoding="utf-8") as f:
+        prev_data = json.load(f)
+
+    prev_tiered = {
+        s["ticker"]
+        for s in prev_data.get("stocks", [])
+        if s.get("investment_tier") is not None
+    }
+
+    current_stocks = get_stocks(market="nasdaq")
+    result = [
+        s for s in current_stocks
+        if s.get("investment_tier") is not None and s["ticker"] not in prev_tiered
+    ]
+    result.sort(key=lambda x: (x.get("investment_tier") or 99, -(enhanced_score(x))))
+    return result
+
+
+def enhanced_score(s: dict) -> float:
+    return (s.get("score") or 0) + (s.get("stage5_score") or 0)
+
+
 # ── Sectors ───────────────────────────────────────────────────────────────────
 
 @app.get("/api/sectors")

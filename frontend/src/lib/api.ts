@@ -46,4 +46,5 @@ export const api = {
   getTopPick: (market: Market) => get<Stock>(`/api/top-pick?market=${market}`),
   getStocks: (market: Market, limit = 200) => get<Stock[]>(`/api/stocks?market=${market}&limit=${limit}`),
   getSwing: () => get<Stock[]>('/api/swing'),
+  getNewPicks: () => get<Stock[]>('/api/new-picks'),
 }
