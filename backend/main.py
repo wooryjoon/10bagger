@@ -37,7 +37,7 @@ def _job_nasdaq():
 
 
 _scheduler = BackgroundScheduler(timezone="Asia/Seoul")
-_scheduler.add_job(_job_nasdaq, CronTrigger(hour=7, minute=10, day_of_week='mon-fri'), id="nasdaq_daily")
+_scheduler.add_job(_job_nasdaq, CronTrigger(hour=7, minute=10, day_of_week='mon'), id="nasdaq_weekly")
 
 
 @asynccontextmanager
