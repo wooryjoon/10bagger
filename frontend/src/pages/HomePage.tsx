@@ -580,7 +580,7 @@ export default function HomePage() {
               </span>
             )}
             <span className="hidden sm:inline text-[#B0B8C1]">
-              매주 월요일 07:10 자동 수집
+              매일 07:10 자동 수집
             </span>
           </div>
         </div>

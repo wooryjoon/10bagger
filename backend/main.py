@@ -37,14 +37,14 @@ def _job_nasdaq():
 
 
 _scheduler = BackgroundScheduler(timezone="Asia/Seoul")
-_scheduler.add_job(_job_nasdaq, CronTrigger(hour=7, minute=10, day_of_week='mon'), id="nasdaq_weekly")
+_scheduler.add_job(_job_nasdaq, CronTrigger(hour=7, minute=10), id="nasdaq_daily")
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     init_db()
     _scheduler.start()
-    logger.info("스케줄러 시작 — NASDAQ 매일 07:10 KST (월~금)")
+    logger.info("스케줄러 시작 — NASDAQ 매일 07:10 KST")
     yield
     _scheduler.shutdown(wait=False)
     logger.info("스케줄러 종료")
@@ -178,6 +178,17 @@ def analyze_stock(ticker: str):
         "reasoning": reasoning,
         "updated_at": datetime.now().isoformat(),
     }
+
+
+# ── Manual trigger ────────────────────────────────────────────────────────────
+
+@app.post("/api/trigger")
+async def trigger_now():
+    """즉시 NASDAQ 수집 배치 실행 (백그라운드 스레드)."""
+    import threading
+    t = threading.Thread(target=_job_nasdaq, daemon=True)
+    t.start()
+    return {"status": "started", "message": "NASDAQ 수집 배치가 백그라운드에서 시작됐습니다"}
 
 
 # ── Run log ───────────────────────────────────────────────────────────────────
