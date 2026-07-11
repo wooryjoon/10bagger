@@ -37,11 +37,16 @@ export interface Stage5Item {
   value: number | null
 }
 
+export interface NewsHeadline {
+  title: string
+  url: string
+}
+
 export interface Stage5Breakdown {
   insider_activity?: Stage5Item
   institutional_flow?: Stage5Item
   news_sentiment?: Stage5Item
-  headlines?: string[]
+  headlines?: Array<NewsHeadline | string>
 }
 
 export interface Stock {

@@ -55,6 +55,16 @@ def _news_title(item: dict) -> str:
     return ''
 
 
+def _news_url(item: dict) -> str:
+    """Extract article URL — new format: content.canonicalUrl.url, old format: item['link']."""
+    content = item.get('content')
+    if isinstance(content, dict):
+        canonical = content.get('canonicalUrl') or content.get('clickThroughUrl')
+        if isinstance(canonical, dict):
+            return str(canonical.get('url', ''))
+    return str(item.get('link', ''))
+
+
 def _news_ts(item: dict) -> float:
     """Extract publish timestamp — old format: providerPublishTime (int), new: content.pubDate (ISO)."""
     ts = item.get('providerPublishTime')
@@ -183,17 +193,22 @@ def fetch_stage5_data(ticker: str) -> dict:
             if not recent_news:
                 recent_news = news[:8]
 
-            headlines = [_news_title(n) for n in recent_news if _news_title(n)]
+            headlines = [
+                {"title": _news_title(n), "url": _news_url(n)}
+                for n in recent_news
+                if _news_title(n)
+            ]
             result["news_count"] = len(headlines)
             result["headlines"]  = headlines[:4]
 
             if headlines:
-                scores = [_sentiment(h) for h in headlines]
+                titles = [h["title"] for h in headlines]
+                scores = [_sentiment(t) for t in titles]
                 result["sentiment_avg"] = round(sum(scores) / len(scores), 3)
                 # 구조적 악재 감지 — 역발상 채점 무효화
                 result["structural_risk"] = any(
-                    any(w in h.lower() for w in _STRUCTURAL_RISK)
-                    for h in headlines
+                    any(w in t.lower() for w in _STRUCTURAL_RISK)
+                    for t in titles
                 )
         except Exception:
             pass

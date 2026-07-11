@@ -4,9 +4,9 @@ import {
   AreaChart, Area, XAxis, YAxis, Tooltip,
   ResponsiveContainer, CartesianGrid,
 } from 'recharts'
-import { ArrowLeft, TrendingUp, TrendingDown, Banknote, Activity, Sparkles, DollarSign, Layers } from 'lucide-react'
+import { ArrowLeft, TrendingUp, TrendingDown, Banknote, Activity, Sparkles, DollarSign, Layers, ExternalLink } from 'lucide-react'
 import { api } from '@/lib/api'
-import type { Stock, PricePoint, Period, ScoreBreakdown, Stage5Item } from '@/types'
+import type { Stock, PricePoint, Period, ScoreBreakdown, Stage5Item, NewsHeadline } from '@/types'
 
 const PERIODS: { label: string; value: Period }[] = [
   { label: '1주', value: '1w' },
@@ -330,10 +330,31 @@ function Stage5Card({ stock }: { stock: Stock }) {
         {bd.headlines && bd.headlines.length > 0 && (
           <div className="mt-2 pt-3 border-t border-[#F2F4F6]">
             <p className="text-xs font-semibold text-[#191F28] mb-2">최근 주요 뉴스</p>
-            <div className="space-y-1.5">
-              {bd.headlines.slice(0, 3).map((h, i) => (
-                <p key={i} className="text-xs text-[#8B95A1] leading-relaxed">• {h}</p>
-              ))}
+            <div className="space-y-2">
+              {bd.headlines.slice(0, 4).map((h, i) => {
+                const isObj = typeof h === 'object' && h !== null
+                const title = isObj ? (h as NewsHeadline).title : (h as string)
+                const url = isObj ? (h as NewsHeadline).url : ''
+                return url ? (
+                  <a
+                    key={i}
+                    href={url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="flex items-start gap-1.5 text-xs text-[#0066FF] hover:text-[#0052CC] leading-relaxed group"
+                    onClick={e => e.stopPropagation()}
+                  >
+                    <span className="mt-0.5 shrink-0 text-[#B0B8C1]">•</span>
+                    <span className="group-hover:underline">{title}</span>
+                    <ExternalLink size={10} className="mt-0.5 shrink-0 opacity-50" />
+                  </a>
+                ) : (
+                  <p key={i} className="flex items-start gap-1.5 text-xs text-[#8B95A1] leading-relaxed">
+                    <span className="mt-0.5 shrink-0">•</span>
+                    <span>{title}</span>
+                  </p>
+                )
+              })}
             </div>
           </div>
         )}
